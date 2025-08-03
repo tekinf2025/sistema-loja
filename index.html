@@ -1,0 +1,1914 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistema Loja</title>
+	<link rel="icon" href="https://i.imgur.com/oZ5CD31.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <div id="root"></div>
+
+    <script type="module">
+      // Import React from CDN (matching component version)
+      import React, { useState, useEffect } from 'https://esm.sh/react@18.2.0';
+      import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+
+      // Hatch client initialization with localStorage-based storage
+      const initHatchClient = async (useEffect, useState) => {
+          // Try to load stored state from JSON file, fallback to inline data
+          let initialStorage = {};
+          try {
+              const response = await fetch('./storedState.json');
+              initialStorage = await response.json();
+          } catch (error) {
+              console.warn('Could not load storedState.json, using inline data:', error);
+              // Fallback to inline stored state data for file:// URLs
+              initialStorage = {};
+          }
+
+          // Initialize localStorage with stored state
+          const STORAGE_PREFIX = 'hatch_component_';
+          Object.entries(initialStorage).forEach(([key, value]) => {
+              const storageKey = STORAGE_PREFIX + key;
+              if (!localStorage.getItem(storageKey)) {
+                  localStorage.setItem(storageKey, JSON.stringify(value));
+              }
+          });
+
+          // Implement useStoredState hook compatible with Hatch
+          const useStoredState = (key, defaultValue) => {
+              const storageKey = STORAGE_PREFIX + key;
+
+              // Get initial value from localStorage or use default
+              const getStoredValue = () => {
+                  try {
+                      const item = localStorage.getItem(storageKey);
+                      return item ? JSON.parse(item) : defaultValue;
+                  } catch (error) {
+                      console.warn('Error reading from localStorage:', error);
+                      return defaultValue;
+                  }
+              };
+
+              const [value, setValue] = useState(getStoredValue);
+
+              // Update localStorage when value changes
+              const setStoredValue = (newValue) => {
+                  try {
+                      const valueToStore = typeof newValue === 'function' ? newValue(value) : newValue;
+                      localStorage.setItem(storageKey, JSON.stringify(valueToStore));
+                      setValue(valueToStore);
+                  } catch (error) {
+                      console.error('Error writing to localStorage:', error);
+                  }
+              };
+
+              // Listen for storage changes from other tabs/windows
+              useEffect(() => {
+                  const handleStorageChange = (e) => {
+                      if (e.key === storageKey && e.newValue) {
+                          try {
+                              setValue(JSON.parse(e.newValue));
+                          } catch (error) {
+                              console.warn('Error parsing storage change:', error);
+                          }
+                      }
+                  };
+
+                  window.addEventListener('storage', handleStorageChange);
+                  return () => window.removeEventListener('storage', handleStorageChange);
+              }, [storageKey]);
+
+              return [value, setStoredValue];
+          };
+
+          // Set up global Hatch client interface
+          window.hatch = {
+              useStoredState,
+              // Mock implementations for other Hatch features
+              useUser: () => ({ id: 'local', name: 'Local User', color: '#4F46E5' }),
+              useCollaborators: () => [],
+              useAssets: () => [],
+              getAllItems: async () => {
+                  const items = {};
+                  for (let i = 0; i < localStorage.length; i++) {
+                      const key = localStorage.key(i);
+                      if (key && key.startsWith(STORAGE_PREFIX)) {
+                          const itemKey = key.replace(STORAGE_PREFIX, '');
+                          try {
+                              items[itemKey] = JSON.parse(localStorage.getItem(key));
+                          } catch (error) {
+                              console.warn('Error parsing stored item:', key, error);
+                          }
+                      }
+                  }
+                  return items;
+              },
+              getItem: async (key) => {
+                  try {
+                      const item = localStorage.getItem(STORAGE_PREFIX + key);
+                      return item ? JSON.parse(item) : undefined;
+                  } catch (error) {
+                      console.warn('Error getting item:', key, error);
+                      return undefined;
+                  }
+              },
+              setItem: async (key, value) => {
+                  try {
+                      localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
+                  } catch (error) {
+                      console.error('Error setting item:', key, error);
+                  }
+              }
+          };
+
+          // Backward compatibility and global availability
+          window.useStoredState = useStoredState;
+          window.React = React;
+          window.useState = useState;
+          window.useEffect = useEffect;
+      };
+
+      // Initialize Hatch client
+      await initHatchClient(useEffect, useState);
+
+      try {
+          // Try to load component from external file, fallback to inline code
+          let componentCode;
+          try {
+              const response = await fetch('./component.js');
+              componentCode = await response.text();
+          } catch (fetchError) {
+              console.warn('Could not load component.js, using inline code:', fetchError);
+              // Fallback to inline component code for file:// URLs
+              componentCode = `// <stdin>
+import React, { useState, useEffect, useMemo } from "https://esm.sh/react@18.2.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js?deps=react@18.2.0,react-dom@18.2.0";
+import { Search, Plus, Edit, Trash2, ShoppingCart, User, Package, Wrench, TrendingUp, X, Check, AlertTriangle, Menu, Calculator, File, Upload, Download, FileText, Database } from "https://esm.sh/lucide-react?deps=react@18.2.0,react-dom@18.2.0";
+var supabaseUrl = "https://ivumtyhdkjurerknjnpt.supabase.co";
+var supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2dW10eWhka2p1cmVya25qbnB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAzNjUyMjMsImV4cCI6MjA2NTk0MTIyM30.rbkqMbSYczGbJdGSjUvARGLIU3Gf-B9q0RWm0vW99Bs";
+var supabase = createClient(supabaseUrl, supabaseKey);
+var useToast = () => {
+  const [toasts, setToasts] = useState([]);
+  const addToast = (message, type = "success") => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 3e3);
+  };
+  const removeToast = (id) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  };
+  return { toasts, addToast, removeToast };
+};
+var Toast = ({ toast, onRemove }) => {
+  const bgColor = toast.type === "success" ? "bg-green-600" : toast.type === "error" ? "bg-red-600" : "bg-blue-600";
+  return /* @__PURE__ */ React.createElement("div", { className: \`\${bgColor} text-white px-4 py-3 rounded-lg shadow-lg flex items-center justify-between mb-2 animate-fade-in\` }, /* @__PURE__ */ React.createElement("span", null, toast.message), /* @__PURE__ */ React.createElement("button", { onClick: () => onRemove(toast.id), className: "ml-2 hover:opacity-70" }, /* @__PURE__ */ React.createElement(X, { size: 16 })));
+};
+var Modal = ({ isOpen, onClose, title, children, size = "2xl" }) => {
+  if (!isOpen) return null;
+  const sizeClasses = {
+    "2xl": "max-w-2xl",
+    "4xl": "max-w-4xl",
+    "6xl": "max-w-6xl"
+  };
+  return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" }, /* @__PURE__ */ React.createElement("div", { className: \`bg-slate-800 rounded-lg p-4 lg:p-6 w-full \${sizeClasses[size]} max-h-[90vh] overflow-y-auto\` }, /* @__PURE__ */ React.createElement("div", { className: "flex justify-between items-center mb-4" }, /* @__PURE__ */ React.createElement("h2", { className: "text-lg lg:text-xl font-semibold text-white" }, title), /* @__PURE__ */ React.createElement("button", { onClick: onClose, className: "text-gray-400 hover:text-white p-1" }, /* @__PURE__ */ React.createElement(X, { size: 20 }))), children));
+};
+var SistemaGerenciamento = () => {
+  const [currentPage, setCurrentPage] = useState("vendas");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { toasts, addToast, removeToast } = useToast();
+  const [produtos, setProdutos] = useState([]);
+  const [servicos, setServicos] = useState([]);
+  const [vendas, setVendas] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const getClienteName = (codigo) => {
+    const cliente = clientes.find((c) => c.codigo === codigo);
+    return cliente ? cliente.nome : codigo;
+  };
+  const getProdutoName = (codigo) => {
+    const produto = produtos.find((p) => p.codigo === codigo);
+    return produto ? produto.nome : codigo;
+  };
+  const getServicoName = (codigo) => {
+    const servico = servicos.find((s) => s.codigo === codigo);
+    return servico ? servico.nome : codigo;
+  };
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [showSaleModal, setShowSaleModal] = useState(false);
+  const [showEditSaleModal, setShowEditSaleModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [filtroMes, setFiltroMes] = useState("mes-atual");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [importLog, setImportLog] = useState([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const arrayToCSV = (data, headers) => {
+    if (!data || data.length === 0) return "";
+    const csvHeaders = headers.join(",");
+    const csvRows = data.map(
+      (row) => headers.map((header) => {
+        const value = row[header] || "";
+        return \`"\${String(value).replace(/"/g, '""')}"\`;
+      }).join(",")
+    );
+    return [csvHeaders, ...csvRows].join("\\n");
+  };
+  const csvToArray = (csvText) => {
+    const lines = csvText.split("\\n").filter((line) => line.trim());
+    if (lines.length === 0) return [];
+    const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(",").map((v) => v.trim().replace(/"/g, ""));
+      if (values.length === headers.length) {
+        const row = {};
+        headers.forEach((header, index) => {
+          row[header] = values[index];
+        });
+        data.push(row);
+      }
+    }
+    return data;
+  };
+  const exportarCSV = async (tipo) => {
+    setIsExporting(true);
+    try {
+      let data = [];
+      let headers = [];
+      let filename = "";
+      switch (tipo) {
+        case "clientes":
+          data = clientes;
+          headers = ["codigo", "nome", "telefone", "observacao", "data_cadastro"];
+          filename = "clientes.csv";
+          break;
+        case "produtos":
+          data = produtos;
+          headers = ["codigo", "nome", "valor", "custo", "estoque"];
+          filename = "produtos.csv";
+          break;
+        case "servicos":
+          data = servicos;
+          headers = ["codigo", "nome", "preco_hora", "preco_custo"];
+          filename = "servicos.csv";
+          break;
+        case "vendas":
+          data = vendas;
+          headers = ["codigo", "data", "cliente_codigo", "produto_codigo", "servico_codigo", "quantidade", "valor_total", "custo_fixo", "lucro", "observacao"];
+          filename = "vendas.csv";
+          break;
+        case "todos":
+          const dataCompleta = {
+            clientes,
+            produtos,
+            servicos,
+            vendas
+          };
+          const csvCompleto = Object.keys(dataCompleta).map((tabela) => {
+            const tabelaHeaders = {
+              clientes: ["codigo", "nome", "telefone", "observacao", "data_cadastro"],
+              produtos: ["codigo", "nome", "valor", "custo", "estoque"],
+              servicos: ["codigo", "nome", "preco_hora", "preco_custo"],
+              vendas: ["codigo", "data", "cliente_codigo", "produto_codigo", "servico_codigo", "quantidade", "valor_total", "custo_fixo", "lucro", "observacao"]
+            };
+            return \`[\${tabela.toUpperCase()}]
+\${arrayToCSV(dataCompleta[tabela], tabelaHeaders[tabela])}
+\`;
+          }).join("\\n");
+          const blob2 = new Blob([csvCompleto], { type: "text/csv;charset=utf-8;" });
+          const link2 = document.createElement("a");
+          link2.href = URL.createObjectURL(blob2);
+          link2.download = "backup_completo.csv";
+          link2.click();
+          addToast("Backup completo exportado com sucesso!");
+          setIsExporting(false);
+          return;
+      }
+      const csvContent = arrayToCSV(data, headers);
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      addToast(\`\${tipo.charAt(0).toUpperCase() + tipo.slice(1)} exportados com sucesso!\`);
+    } catch (error) {
+      console.error("Erro ao exportar:", error);
+      addToast(\`Erro ao exportar: \${error.message}\`, "error");
+    }
+    setIsExporting(false);
+  };
+  const importarCSV = async (file, tipo) => {
+    setIsImporting(true);
+    setImportLog([]);
+    try {
+      const text = await file.text();
+      let data = [];
+      let log = [];
+      if (tipo === "todos") {
+        const sections = text.split(/\\[([A-Z]+)\\]/);
+        for (let i = 1; i < sections.length; i += 2) {
+          const sectionName = sections[i].toLowerCase();
+          const sectionData = sections[i + 1];
+          if (sectionData && sectionData.trim()) {
+            const parsedData = csvToArray(sectionData.trim());
+            try {
+              await processarImportacao(parsedData, sectionName);
+              log.push(\`\\u2705 \${sectionName}: \${parsedData.length} registros importados\`);
+            } catch (error) {
+              log.push(\`\\u274C \${sectionName}: Erro - \${error.message}\`);
+            }
+          }
+        }
+      } else {
+        data = csvToArray(text);
+        await processarImportacao(data, tipo);
+        log.push(\`\\u2705 \${data.length} registros de \${tipo} importados com sucesso\`);
+      }
+      setImportLog(log);
+      await loadAllData();
+      addToast("Importa\\xE7\\xE3o conclu\\xEDda!");
+    } catch (error) {
+      console.error("Erro ao importar:", error);
+      addToast(\`Erro ao importar: \${error.message}\`, "error");
+      setImportLog([\`\\u274C Erro: \${error.message}\`]);
+    }
+    setIsImporting(false);
+  };
+  const processarImportacao = async (data, tipo) => {
+    const tabelas = {
+      clientes: "sistema_clientes",
+      produtos: "sistema_estoque",
+      servicos: "sistema_servicos",
+      vendas: "sistema_vendas"
+    };
+    const tabela = tabelas[tipo];
+    if (!tabela || !data || data.length === 0) {
+      throw new Error(\`Tipo inv\\xE1lido ou dados vazios para \${tipo}\`);
+    }
+    const dadosLimpos = data.map((row) => {
+      const cleanRow = {};
+      Object.keys(row).forEach((key) => {
+        const value = row[key];
+        if (value === "" || value === "null" || value === "undefined") {
+          cleanRow[key] = null;
+        } else if (key.includes("valor") || key.includes("custo") || key.includes("preco") || key.includes("total") || key.includes("lucro")) {
+          cleanRow[key] = parseFloat(value) || 0;
+        } else if (key === "quantidade" || key === "estoque") {
+          cleanRow[key] = parseInt(value) || 0;
+        } else {
+          cleanRow[key] = value;
+        }
+      });
+      return cleanRow;
+    });
+    const batchSize = 100;
+    for (let i = 0; i < dadosLimpos.length; i += batchSize) {
+      const batch = dadosLimpos.slice(i, i + batchSize);
+      const { error } = await supabase.from(tabela).upsert(batch, {
+        onConflict: "codigo",
+        ignoreDuplicates: false
+      });
+      if (error) throw error;
+    }
+  };
+  const handleFileUpload = (event, tipo) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (!file.name.endsWith(".csv")) {
+      addToast("Por favor, selecione um arquivo CSV", "error");
+      return;
+    }
+    importarCSV(file, tipo);
+    event.target.value = "";
+  };
+  const [clientForm, setClientForm] = useState({
+    codigo: "",
+    nome: "",
+    telefone: "",
+    observacao: "",
+    data_cadastro: (/* @__PURE__ */ new Date()).toISOString().split("T")[0]
+  });
+  const [productForm, setProductForm] = useState({
+    codigo: "",
+    nome: "",
+    valor: "",
+    estoque: "",
+    custo: ""
+  });
+  const [serviceForm, setServiceForm] = useState({
+    codigo: "",
+    nome: "",
+    preco_hora: "",
+    preco_custo: ""
+  });
+  const [novaVenda, setNovaVenda] = useState({
+    cliente: null,
+    data: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+    observacao: "",
+    itens: []
+  });
+  const [vendaEditando, setVendaEditando] = useState({
+    codigo: "",
+    cliente: null,
+    data: "",
+    observacao: "",
+    quantidade: 1,
+    valor_total: 0,
+    custo_fixo: 0,
+    produto_codigo: "",
+    servico_codigo: ""
+  });
+  const [buscaCliente, setBuscaCliente] = useState("");
+  const [buscaProduto, setBuscaProduto] = useState("");
+  const [buscaServico, setBuscaServico] = useState("");
+  const [mostrarSugestoesCliente, setMostrarSugestoesCliente] = useState(false);
+  const [mostrarSugestoesProduto, setMostrarSugestoesProduto] = useState(false);
+  const [mostrarSugestoesServico, setMostrarSugestoesServico] = useState(false);
+  useEffect(() => {
+    loadAllData();
+  }, []);
+  const loadAllData = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        loadProdutos(),
+        loadServicos(),
+        loadVendas(),
+        loadClientes()
+      ]);
+    } catch (error) {
+      addToast("Erro ao carregar dados", "error");
+    }
+    setLoading(false);
+  };
+  const loadProdutos = async () => {
+    const { data, error } = await supabase.from("sistema_estoque").select("*");
+    if (error) throw error;
+    setProdutos(data || []);
+  };
+  const loadServicos = async () => {
+    const { data, error } = await supabase.from("sistema_servicos").select("*");
+    if (error) throw error;
+    setServicos(data || []);
+  };
+  const loadVendas = async () => {
+    const { data, error } = await supabase.from("sistema_vendas").select("*").order("data", { ascending: false });
+    if (error) throw error;
+    setVendas(data || []);
+  };
+  const loadClientes = async () => {
+    const { data, error } = await supabase.from("sistema_clientes").select("*").order("data_cadastro", { ascending: false });
+    if (error) throw error;
+    setClientes(data || []);
+  };
+  const handleSaveClient = async (e) => {
+    e.preventDefault();
+    try {
+      const clientDataToSave = clientForm;
+      if (editingItem) {
+        const { error } = await supabase.from("sistema_clientes").update(clientDataToSave).eq("codigo", editingItem.codigo);
+        if (error) throw error;
+        addToast("Cliente atualizado com sucesso!");
+      } else {
+        const { error } = await supabase.from("sistema_clientes").insert([clientDataToSave]);
+        if (error) throw error;
+        addToast("Cliente criado com sucesso!");
+      }
+      await loadClientes();
+      setShowClientModal(false);
+      setEditingItem(null);
+      setClientForm({
+        codigo: "",
+        nome: "",
+        telefone: "",
+        observacao: "",
+        data_cadastro: (/* @__PURE__ */ new Date()).toISOString().split("T")[0]
+      });
+    } catch (error) {
+      addToast("Erro ao salvar cliente: " + error.message, "error");
+    }
+  };
+  const handleDeleteClient = async (codigo) => {
+    if (window.confirm("Tem certeza que deseja excluir este cliente?")) {
+      try {
+        const { error } = await supabase.from("sistema_clientes").delete().eq("codigo", codigo);
+        if (error) throw error;
+        await loadClientes();
+        addToast("Cliente exclu\\xEDdo com sucesso!");
+      } catch (error) {
+        addToast("Erro ao excluir cliente: " + error.message, "error");
+      }
+    }
+  };
+  const handleSaveProduct = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingItem) {
+        const { error } = await supabase.from("sistema_estoque").update(productForm).eq("codigo", editingItem.codigo);
+        if (error) throw error;
+        addToast("Produto atualizado com sucesso!");
+      } else {
+        const { error } = await supabase.from("sistema_estoque").insert([productForm]);
+        if (error) throw error;
+        addToast("Produto criado com sucesso!");
+      }
+      await loadProdutos();
+      setShowProductModal(false);
+      setEditingItem(null);
+      setProductForm({ codigo: "", nome: "", valor: "", estoque: "", custo: "" });
+    } catch (error) {
+      addToast("Erro ao salvar produto: " + error.message, "error");
+    }
+  };
+  const handleDeleteProduct = async (codigo) => {
+    if (window.confirm("Tem certeza que deseja excluir este produto?")) {
+      try {
+        const { error } = await supabase.from("sistema_estoque").delete().eq("codigo", codigo);
+        if (error) throw error;
+        await loadProdutos();
+        addToast("Produto exclu\\xEDdo com sucesso!");
+      } catch (error) {
+        addToast("Erro ao excluir produto: " + error.message, "error");
+      }
+    }
+  };
+  const handleSaveService = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingItem) {
+        const { error } = await supabase.from("sistema_servicos").update(serviceForm).eq("codigo", editingItem.codigo);
+        if (error) throw error;
+        addToast("Servi\\xE7o atualizado com sucesso!");
+      } else {
+        const { error } = await supabase.from("sistema_servicos").insert([serviceForm]);
+        if (error) throw error;
+        addToast("Servi\\xE7o criado com sucesso!");
+      }
+      await loadServicos();
+      setShowServiceModal(false);
+      setEditingItem(null);
+      setServiceForm({ codigo: "", nome: "", preco_hora: "", preco_custo: "" });
+    } catch (error) {
+      addToast("Erro ao salvar servi\\xE7o: " + error.message, "error");
+    }
+  };
+  const handleDeleteService = async (codigo) => {
+    if (window.confirm("Tem certeza que deseja excluir este servi\\xE7o?")) {
+      try {
+        const { error } = await supabase.from("sistema_servicos").delete().eq("codigo", codigo);
+        if (error) throw error;
+        await loadServicos();
+        addToast("Servi\\xE7o exclu\\xEDdo com sucesso!");
+      } catch (error) {
+        addToast("Erro ao excluir servi\\xE7o: " + error.message, "error");
+      }
+    }
+  };
+  const getNextSaleCode = () => {
+    if (!vendas || vendas.length === 0) {
+      return "VEN-0001";
+    }
+    try {
+      const maxCode = vendas.reduce((max, venda) => {
+        if (!venda.codigo) return max;
+        const match = venda.codigo.match(/ven-(\\d+)/i);
+        if (match) {
+          const num = parseInt(match[1]);
+          return num > max ? num : max;
+        }
+        return max;
+      }, 0);
+      const nextNum = maxCode + 1;
+      return \`VEN-\${nextNum.toString().padStart(4, "0")}\`;
+    } catch (error) {
+      console.error("Erro ao gerar c\\xF3digo da venda:", error);
+      return \`VEN-\${Date.now().toString().slice(-4)}\`;
+    }
+  };
+  const getNextClientCode = () => {
+    if (!clientes || clientes.length === 0) {
+      return "CLI-0001";
+    }
+    try {
+      const maxCode = clientes.reduce((max, cliente) => {
+        if (!cliente.codigo) return max;
+        const match = cliente.codigo.match(/cli-(\\d+)/i);
+        if (match) {
+          const num = parseInt(match[1]);
+          return num > max ? num : max;
+        }
+        return max;
+      }, 0);
+      const nextNum = maxCode + 1;
+      return \`CLI-\${nextNum.toString().padStart(4, "0")}\`;
+    } catch (error) {
+      console.error("Erro ao gerar c\\xF3digo do cliente:", error);
+      return \`CLI-\${Date.now().toString().slice(-4)}\`;
+    }
+  };
+  const getNextProductCode = () => {
+    if (!produtos || produtos.length === 0) {
+      return "PRD-0001";
+    }
+    try {
+      const maxCode = produtos.reduce((max, produto) => {
+        if (!produto.codigo) return max;
+        const match = produto.codigo.match(/prd-(\\d+)/i);
+        if (match) {
+          const num = parseInt(match[1]);
+          return num > max ? num : max;
+        }
+        return max;
+      }, 0);
+      const nextNum = maxCode + 1;
+      return \`PRD-\${nextNum.toString().padStart(4, "0")}\`;
+    } catch (error) {
+      console.error("Erro ao gerar c\\xF3digo do produto:", error);
+      return \`PRD-\${Date.now().toString().slice(-4)}\`;
+    }
+  };
+  const getNextServiceCode = () => {
+    if (!servicos || servicos.length === 0) {
+      return "SRV-0001";
+    }
+    try {
+      const maxCode = servicos.reduce((max, servico) => {
+        if (!servico.codigo) return max;
+        const match = servico.codigo.match(/srv-(\\d+)/i);
+        if (match) {
+          const num = parseInt(match[1]);
+          return num > max ? num : max;
+        }
+        return max;
+      }, 0);
+      const nextNum = maxCode + 1;
+      return \`SRV-\${nextNum.toString().padStart(4, "0")}\`;
+    } catch (error) {
+      console.error("Erro ao gerar c\\xF3digo do servi\\xE7o:", error);
+      return \`SRV-\${Date.now().toString().slice(-4)}\`;
+    }
+  };
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL"
+    }).format(parseFloat(value || 0));
+  };
+  const getSugestoesClientes = () => {
+    if (!buscaCliente) return [];
+    return clientes.filter(
+      (c) => c.nome.toLowerCase().includes(buscaCliente.toLowerCase()) || c.codigo.toLowerCase().includes(buscaCliente.toLowerCase())
+    ).slice(0, 5);
+  };
+  const getSugestoesProdutos = () => {
+    if (!buscaProduto) return [];
+    return produtos.filter(
+      (p) => p.nome.toLowerCase().includes(buscaProduto.toLowerCase()) || p.codigo.toLowerCase().includes(buscaProduto.toLowerCase())
+    ).slice(0, 5);
+  };
+  const getSugestoesServicos = () => {
+    if (!buscaServico) return [];
+    return servicos.filter(
+      (s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase()) || s.codigo.toLowerCase().includes(buscaServico.toLowerCase())
+    ).slice(0, 5);
+  };
+  const selecionarCliente = (cliente) => {
+    setNovaVenda({ ...novaVenda, cliente });
+    setBuscaCliente(cliente.nome);
+    setMostrarSugestoesCliente(false);
+  };
+  const adicionarProduto = (produto) => {
+    const produtoJaAdicionado = novaVenda.itens.find((item) => item.codigo === produto.codigo && item.tipo === "produto");
+    if (produtoJaAdicionado) {
+      addToast("Este produto j\\xE1 foi adicionado \\xE0 venda!", "error");
+      setBuscaProduto("");
+      setMostrarSugestoesProduto(false);
+      return;
+    }
+    const estoqueDisponivel = parseInt(produto.estoque || 0);
+    if (estoqueDisponivel <= 0) {
+      addToast("Produto sem estoque dispon\\xEDvel!", "error");
+      setBuscaProduto("");
+      setMostrarSugestoesProduto(false);
+      return;
+    }
+    const novoItem = {
+      id: Date.now(),
+      tipo: "produto",
+      codigo: produto.codigo,
+      nome: produto.nome,
+      quantidade: 1,
+      preco_venda: parseFloat(produto.valor || 0),
+      preco_custo: parseFloat(produto.custo || 0),
+      estoque_disponivel: estoqueDisponivel
+    };
+    setNovaVenda({
+      ...novaVenda,
+      itens: [...novaVenda.itens, novoItem]
+    });
+    setBuscaProduto("");
+    setMostrarSugestoesProduto(false);
+    addToast("Produto adicionado \\xE0 venda!");
+  };
+  const adicionarServico = (servico) => {
+    const servicoJaAdicionado = novaVenda.itens.find((item) => item.codigo === servico.codigo && item.tipo === "servico");
+    if (servicoJaAdicionado) {
+      addToast("Este servi\\xE7o j\\xE1 foi adicionado \\xE0 venda!", "error");
+      setBuscaServico("");
+      setMostrarSugestoesServico(false);
+      return;
+    }
+    const novoItem = {
+      id: Date.now(),
+      tipo: "servico",
+      codigo: servico.codigo,
+      nome: servico.nome,
+      quantidade: 1,
+      preco_venda: parseFloat(servico.preco_hora || 0),
+      preco_custo: parseFloat(servico.preco_custo || 0)
+    };
+    setNovaVenda({
+      ...novaVenda,
+      itens: [...novaVenda.itens, novoItem]
+    });
+    setBuscaServico("");
+    setMostrarSugestoesServico(false);
+    addToast("Servi\\xE7o adicionado \\xE0 venda!");
+  };
+  const atualizarItem = (itemId, campo, valor) => {
+    setNovaVenda({
+      ...novaVenda,
+      itens: novaVenda.itens.map(
+        (item) => item.id === itemId ? { ...item, [campo]: valor } : item
+      )
+    });
+  };
+  const removerItem = (itemId) => {
+    setNovaVenda({
+      ...novaVenda,
+      itens: novaVenda.itens.filter((item) => item.id !== itemId)
+    });
+  };
+  const calcularTotais = () => {
+    const valorTotal = novaVenda.itens.reduce(
+      (sum, item) => sum + item.quantidade * item.preco_venda,
+      0
+    );
+    const custoTotal = novaVenda.itens.reduce(
+      (sum, item) => sum + item.quantidade * item.preco_custo,
+      0
+    );
+    const lucroTotal = valorTotal - custoTotal;
+    const margemLucro = valorTotal > 0 ? lucroTotal / valorTotal * 100 : 0;
+    return { valorTotal, custoTotal, lucroTotal, margemLucro };
+  };
+  const finalizarVenda = async () => {
+    if (!novaVenda.cliente || novaVenda.itens.length === 0) {
+      addToast("Selecione um cliente e adicione itens \\xE0 venda", "error");
+      return;
+    }
+    try {
+      const codigoBase = getNextSaleCode();
+      const { valorTotal, custoTotal, lucroTotal } = calcularTotais();
+      const vendasParaCriar = novaVenda.itens.map((item, index) => {
+        const custoItem = item.quantidade * item.preco_custo;
+        const lucroItem = item.quantidade * item.preco_venda - custoItem;
+        const vendaData = {
+          codigo: index === 0 ? codigoBase : \`\${codigoBase}-\${index + 1}\`,
+          data: novaVenda.data,
+          cliente_codigo: novaVenda.cliente.codigo,
+          quantidade: item.quantidade,
+          valor_total: item.quantidade * item.preco_venda,
+          custo_fixo: custoItem,
+          lucro: lucroItem,
+          observacao: novaVenda.observacao || null
+        };
+        if (item.tipo === "produto") {
+          vendaData.produto_codigo = item.codigo;
+        } else {
+          vendaData.servico_codigo = item.codigo;
+        }
+        return vendaData;
+      });
+      const { error: insertError } = await supabase.from("sistema_vendas").insert(vendasParaCriar);
+      if (insertError) throw insertError;
+      for (const item of novaVenda.itens) {
+        if (item.tipo === "produto") {
+          const produto = produtos.find((p) => p.codigo === item.codigo);
+          if (produto) {
+            const novoEstoque = parseInt(produto.estoque) - item.quantidade;
+            const { error: updateError } = await supabase.from("sistema_estoque").update({ estoque: novoEstoque }).eq("codigo", produto.codigo);
+            if (updateError) throw updateError;
+          }
+        }
+      }
+      await Promise.all([loadVendas(), loadProdutos()]);
+      setNovaVenda({
+        cliente: null,
+        data: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+        observacao: "",
+        itens: []
+      });
+      setBuscaCliente("");
+      setShowSaleModal(false);
+      addToast(\`Venda \${codigoBase} finalizada com sucesso! Total: \${formatCurrency(valorTotal)}\`);
+    } catch (error) {
+      console.error("Erro ao finalizar venda:", error);
+      addToast(\`Erro ao finalizar venda: \${error.message}\`, "error");
+    }
+  };
+  const handleDeleteSale = async (codigo) => {
+    if (window.confirm("Tem certeza que deseja excluir esta venda?")) {
+      try {
+        const { error } = await supabase.from("sistema_vendas").delete().eq("codigo", codigo);
+        if (error) throw error;
+        await loadVendas();
+        addToast("Venda exclu\\xEDda com sucesso!");
+      } catch (error) {
+        addToast("Erro ao excluir venda: " + error.message, "error");
+      }
+    }
+  };
+  const handleEditSale = (venda) => {
+    const cliente = clientes.find((c) => c.codigo === venda.cliente_codigo);
+    setVendaEditando({
+      codigo: venda.codigo,
+      cliente,
+      data: venda.data,
+      observacao: venda.observacao || "",
+      quantidade: venda.quantidade || 1,
+      valor_total: parseFloat(venda.valor_total || 0),
+      custo_fixo: parseFloat(venda.custo_fixo || 0),
+      produto_codigo: venda.produto_codigo || "",
+      servico_codigo: venda.servico_codigo || ""
+    });
+    setBuscaCliente(cliente ? cliente.nome : "");
+    setShowEditSaleModal(true);
+  };
+  const handleSaveEditSale = async (e) => {
+    e.preventDefault();
+    if (!vendaEditando.cliente) {
+      addToast("Selecione um cliente", "error");
+      return;
+    }
+    try {
+      const vendaData = {
+        data: vendaEditando.data,
+        cliente_codigo: vendaEditando.cliente.codigo,
+        quantidade: vendaEditando.quantidade,
+        valor_total: vendaEditando.valor_total,
+        custo_fixo: vendaEditando.custo_fixo,
+        lucro: vendaEditando.valor_total - vendaEditando.custo_fixo,
+        observacao: vendaEditando.observacao || null,
+        produto_codigo: vendaEditando.produto_codigo || null,
+        servico_codigo: vendaEditando.servico_codigo || null
+      };
+      const { error } = await supabase.from("sistema_vendas").update(vendaData).eq("codigo", vendaEditando.codigo);
+      if (error) throw error;
+      await loadVendas();
+      setShowEditSaleModal(false);
+      addToast("Venda editada com sucesso!");
+    } catch (error) {
+      console.error("Erro ao editar venda:", error);
+      addToast(\`Erro ao editar venda: \${error.message}\`, "error");
+    }
+  };
+  const filteredClientes = useMemo(() => {
+    return clientes.filter(
+      (cliente) => cliente.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || cliente.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) || cliente.telefone?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [clientes, searchTerm]);
+  const filteredProdutos = useMemo(() => {
+    return produtos.filter(
+      (produto) => produto.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || produto.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [produtos, searchTerm]);
+  const filteredServicos = useMemo(() => {
+    return servicos.filter(
+      (servico) => servico.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || servico.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [servicos, searchTerm]);
+  const filteredVendas = useMemo(() => {
+    return vendas.filter((venda) => {
+      const clienteNome = getClienteName(venda.cliente_codigo);
+      const produtoNome = venda.produto_codigo ? getProdutoName(venda.produto_codigo) : "";
+      const servicoNome = venda.servico_codigo ? getServicoName(venda.servico_codigo) : "";
+      const matchesSearch = venda.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) || clienteNome?.toLowerCase().includes(searchTerm.toLowerCase()) || produtoNome?.toLowerCase().includes(searchTerm.toLowerCase()) || servicoNome?.toLowerCase().includes(searchTerm.toLowerCase());
+      const dataVenda = new Date(venda.data);
+      const mesAtual = (/* @__PURE__ */ new Date()).getMonth();
+      const anoAtual = (/* @__PURE__ */ new Date()).getFullYear();
+      let matchesMes = true;
+      if (filtroMes === "mes-atual") {
+        matchesMes = dataVenda.getMonth() === mesAtual && dataVenda.getFullYear() === anoAtual;
+      } else if (filtroMes === "mes-passado") {
+        const mesPassado = mesAtual === 0 ? 11 : mesAtual - 1;
+        const anoMesPassado = mesAtual === 0 ? anoAtual - 1 : anoAtual;
+        matchesMes = dataVenda.getMonth() === mesPassado && dataVenda.getFullYear() === anoMesPassado;
+      } else if (filtroMes === "ultimos-30") {
+        const dataLimite = /* @__PURE__ */ new Date();
+        dataLimite.setDate(dataLimite.getDate() - 30);
+        matchesMes = dataVenda >= dataLimite;
+      }
+      let matchesDataRange = true;
+      if (dataInicio && dataFim) {
+        const inicio = new Date(dataInicio);
+        const fim = new Date(dataFim);
+        fim.setHours(23, 59, 59, 999);
+        matchesDataRange = dataVenda >= inicio && dataVenda <= fim;
+      } else if (dataInicio) {
+        const inicio = new Date(dataInicio);
+        matchesDataRange = dataVenda >= inicio;
+      } else if (dataFim) {
+        const fim = new Date(dataFim);
+        fim.setHours(23, 59, 59, 999);
+        matchesDataRange = dataVenda <= fim;
+      }
+      let matchesTipo = true;
+      if (filtroTipo === "produtos") {
+        matchesTipo = !!venda.produto_codigo;
+      } else if (filtroTipo === "servicos") {
+        matchesTipo = !!venda.servico_codigo;
+      }
+      return matchesSearch && matchesMes && matchesTipo && matchesDataRange;
+    });
+  }, [vendas, searchTerm, clientes, produtos, servicos, filtroMes, filtroTipo, dataInicio, dataFim]);
+  const estatisticasVendas = useMemo(() => {
+    const totalVendas = filteredVendas.reduce((sum, venda) => sum + parseFloat(venda.valor_total || 0), 0);
+    const totalCusto = filteredVendas.reduce((sum, venda) => sum + parseFloat(venda.custo_fixo || 0), 0);
+    const totalLucro = filteredVendas.reduce((sum, venda) => sum + parseFloat(venda.lucro || 0), 0);
+    const quantidadeVendas = filteredVendas.length;
+    const ticketMedio = quantidadeVendas > 0 ? totalVendas / quantidadeVendas : 0;
+    return {
+      totalVendas,
+      totalCusto,
+      totalLucro,
+      quantidadeVendas,
+      ticketMedio
+    };
+  }, [filteredVendas]);
+  const handleEdit = (item, type) => {
+    setEditingItem(item);
+    if (type === "cliente") {
+      setClientForm(item);
+      setShowClientModal(true);
+    } else if (type === "produto") {
+      setProductForm(item);
+      setShowProductModal(true);
+    } else if (type === "servico") {
+      setServiceForm(item);
+      setShowServiceModal(true);
+    }
+  };
+  const menuItems = [
+    { id: "clientes", name: "Clientes", icon: User },
+    { id: "produtos", name: "Produtos", icon: Package },
+    { id: "servicos", name: "Servi\\xE7os", icon: Wrench },
+    { id: "vendas", name: "Vendas", icon: TrendingUp },
+    { id: "importacao", name: "Import/Export", icon: File }
+  ];
+  const renderPage = () => {
+    switch (currentPage) {
+      case "clientes":
+        return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Clientes"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Gerencie seus clientes")), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              setEditingItem(null);
+              setClientForm({
+                codigo: getNextClientCode(),
+                nome: "",
+                telefone: "",
+                observacao: "",
+                data_cadastro: (/* @__PURE__ */ new Date()).toISOString().split("T")[0]
+              });
+              setShowClientModal(true);
+            },
+            className: "bg-green-600 hover:bg-green-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg flex items-center justify-center gap-2 text-sm lg:text-base whitespace-nowrap"
+          },
+          /* @__PURE__ */ React.createElement(Plus, { size: 16, className: "lg:w-5 lg:h-5" }),
+          "Novo Cliente"
+        )), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 rounded-lg overflow-hidden" }, /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full min-w-[600px]" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-slate-700" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "Nome"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell" }, "Telefone"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell" }, "Data Cadastro"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell" }, "Observa\\xE7\\xE3o"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "A\\xE7\\xF5es"))), /* @__PURE__ */ React.createElement("tbody", { className: "bg-slate-800 divide-y divide-slate-700" }, filteredClientes.map((cliente) => /* @__PURE__ */ React.createElement("tr", { key: cliente.codigo, className: "hover:bg-slate-700" }, /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-blue-400" }, cliente.codigo), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 text-xs lg:text-sm text-white font-medium" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, cliente.nome), /* @__PURE__ */ React.createElement("div", { className: "sm:hidden text-xs text-gray-400" }, cliente.telefone))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-300 hidden sm:table-cell" }, cliente.telefone), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-300 hidden md:table-cell" }, cliente.data_cadastro ? (/* @__PURE__ */ new Date(cliente.data_cadastro + "T12:00:00")).toLocaleDateString("pt-BR") : "-"), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 text-xs lg:text-sm text-gray-400 max-w-xs truncate hidden lg:table-cell" }, cliente.observacao || "-"), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "flex space-x-1 lg:space-x-2" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleEdit(cliente, "cliente"),
+            className: "text-blue-400 hover:text-blue-300 p-1"
+          },
+          /* @__PURE__ */ React.createElement(Edit, { size: 14, className: "lg:w-4 lg:h-4" })
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleDeleteClient(cliente.codigo),
+            className: "text-red-400 hover:text-red-300 p-1"
+          },
+          /* @__PURE__ */ React.createElement(Trash2, { size: 14, className: "lg:w-4 lg:h-4" })
+        ))))))))));
+      case "produtos":
+        return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Produtos"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Gerencie seu estoque de produtos")), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              setEditingItem(null);
+              setProductForm({ codigo: getNextProductCode(), nome: "", valor: "", estoque: "", custo: "" });
+              setShowProductModal(true);
+            },
+            className: "bg-green-600 hover:bg-green-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg flex items-center justify-center gap-2 text-sm lg:text-base whitespace-nowrap"
+          },
+          /* @__PURE__ */ React.createElement(Plus, { size: 16, className: "lg:w-5 lg:h-5" }),
+          "Novo Produto"
+        )), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 rounded-lg overflow-hidden" }, /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full min-w-[600px]" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-slate-700" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "Nome"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell" }, "Pre\\xE7o"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell" }, "Custo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell" }, "Estoque"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "A\\xE7\\xF5es"))), /* @__PURE__ */ React.createElement("tbody", { className: "bg-slate-800 divide-y divide-slate-700" }, filteredProdutos.map((produto) => /* @__PURE__ */ React.createElement("tr", { key: produto.codigo, className: "hover:bg-slate-700" }, /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-blue-400" }, produto.codigo), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 text-xs lg:text-sm text-white font-medium" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, produto.nome), /* @__PURE__ */ React.createElement("div", { className: "sm:hidden text-xs text-green-400" }, formatCurrency(produto.valor)))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-green-400 hidden sm:table-cell" }, formatCurrency(produto.valor)), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-red-400 hidden md:table-cell" }, formatCurrency(produto.custo)), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-white hidden lg:table-cell" }, produto.estoque), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "flex space-x-1 lg:space-x-2" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleEdit(produto, "produto"),
+            className: "text-blue-400 hover:text-blue-300 p-1"
+          },
+          /* @__PURE__ */ React.createElement(Edit, { size: 14, className: "lg:w-4 lg:h-4" })
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleDeleteProduct(produto.codigo),
+            className: "text-red-400 hover:text-red-300 p-1"
+          },
+          /* @__PURE__ */ React.createElement(Trash2, { size: 14, className: "lg:w-4 lg:h-4" })
+        ))))))))));
+      case "servicos":
+        return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Servi\\xE7os"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Gerencie seus servi\\xE7os oferecidos")), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              setEditingItem(null);
+              setServiceForm({ codigo: getNextServiceCode(), nome: "", preco_hora: "", preco_custo: "" });
+              setShowServiceModal(true);
+            },
+            className: "bg-green-600 hover:bg-green-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg flex items-center justify-center gap-2 text-sm lg:text-base whitespace-nowrap"
+          },
+          /* @__PURE__ */ React.createElement(Plus, { size: 16, className: "lg:w-5 lg:h-5" }),
+          "Novo Servi\\xE7o"
+        )), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 rounded-lg overflow-hidden" }, /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full min-w-[600px]" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-slate-700" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "Nome"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell" }, "Pre\\xE7o/Hora"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell" }, "Custo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "A\\xE7\\xF5es"))), /* @__PURE__ */ React.createElement("tbody", { className: "bg-slate-800 divide-y divide-slate-700" }, filteredServicos.map((servico) => /* @__PURE__ */ React.createElement("tr", { key: servico.codigo, className: "hover:bg-slate-700" }, /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-blue-400" }, servico.codigo), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 text-xs lg:text-sm text-white font-medium" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, servico.nome), /* @__PURE__ */ React.createElement("div", { className: "sm:hidden text-xs text-green-400" }, formatCurrency(servico.preco_hora), "/h"))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-green-400 hidden sm:table-cell" }, formatCurrency(servico.preco_hora)), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-red-400 hidden md:table-cell" }, formatCurrency(servico.preco_custo)), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "flex space-x-1 lg:space-x-2" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleEdit(servico, "servico"),
+            className: "text-blue-400 hover:text-blue-300 p-1"
+          },
+          /* @__PURE__ */ React.createElement(Edit, { size: 14, className: "lg:w-4 lg:h-4" })
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleDeleteService(servico.codigo),
+            className: "text-red-400 hover:text-red-300 p-1"
+          },
+          /* @__PURE__ */ React.createElement(Trash2, { size: 14, className: "lg:w-4 lg:h-4" })
+        ))))))))));
+      case "vendas":
+        return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Vendas"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Gerencie suas vendas e pedidos")), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              setNovaVenda({
+                cliente: null,
+                data: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+                observacao: "",
+                itens: []
+              });
+              setBuscaCliente("");
+              setBuscaProduto("");
+              setBuscaServico("");
+              setShowSaleModal(true);
+            },
+            className: "bg-green-600 hover:bg-green-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg flex items-center justify-center gap-2 text-sm lg:text-base font-medium"
+          },
+          /* @__PURE__ */ React.createElement(Plus, { size: 16, className: "lg:w-5 lg:h-5 flex-shrink-0" }),
+          "Nova Venda"
+        )), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-3 lg:p-4 rounded-lg border border-green-500/30" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs lg:text-sm text-gray-400 truncate" }, "Total em Vendas"), /* @__PURE__ */ React.createElement("p", { className: "text-base lg:text-xl font-bold text-green-400 truncate" }, formatCurrency(estatisticasVendas.totalVendas))), /* @__PURE__ */ React.createElement(TrendingUp, { className: "h-6 w-6 lg:h-8 lg:w-8 text-green-400 flex-shrink-0 ml-2" }))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-3 lg:p-4 rounded-lg border border-blue-500/30" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs lg:text-sm text-gray-400 truncate" }, "Vendas do Per\\xEDodo"), /* @__PURE__ */ React.createElement("p", { className: "text-base lg:text-xl font-bold text-blue-400" }, estatisticasVendas.quantidadeVendas)), /* @__PURE__ */ React.createElement(ShoppingCart, { className: "h-6 w-6 lg:h-8 lg:w-8 text-blue-400 flex-shrink-0 ml-2" }))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-3 lg:p-4 rounded-lg border border-yellow-500/30" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs lg:text-sm text-gray-400 truncate" }, "Ticket M\\xE9dio"), /* @__PURE__ */ React.createElement("p", { className: "text-base lg:text-xl font-bold text-yellow-400 truncate" }, formatCurrency(estatisticasVendas.ticketMedio))), /* @__PURE__ */ React.createElement(Package, { className: "h-6 w-6 lg:h-8 lg:w-8 text-yellow-400 flex-shrink-0 ml-2" }))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-3 lg:p-4 rounded-lg border border-emerald-500/30" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs lg:text-sm text-gray-400 truncate" }, "Valor L\\xEDquido"), /* @__PURE__ */ React.createElement("p", { className: "text-base lg:text-xl font-bold text-emerald-400 truncate" }, formatCurrency(estatisticasVendas.totalLucro))), /* @__PURE__ */ React.createElement(TrendingUp, { className: "h-6 w-6 lg:h-8 lg:w-8 text-emerald-400 flex-shrink-0 ml-2" })))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-3 lg:p-4 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "space-y-3 lg:space-y-4" }, /* @__PURE__ */ React.createElement("div", { className: "relative" }, /* @__PURE__ */ React.createElement(Search, { className: "absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400", size: 16 }), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "text",
+            placeholder: "Buscar vendas...",
+            value: searchTerm,
+            onChange: (e) => setSearchTerm(e.target.value),
+            className: "w-full bg-slate-700 text-white pl-10 pr-4 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          }
+        )), /* @__PURE__ */ React.createElement("div", { className: "space-y-3 lg:grid lg:grid-cols-2 xl:grid-cols-4 lg:gap-3 lg:space-y-0" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-xs text-gray-400 mb-1" }, "Data In\\xEDcio"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "date",
+            value: dataInicio,
+            onChange: (e) => setDataInicio(e.target.value),
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          }
+        )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-xs text-gray-400 mb-1" }, "Data Fim"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "date",
+            value: dataFim,
+            onChange: (e) => setDataFim(e.target.value),
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          }
+        )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-xs text-gray-400 mb-1" }, "Per\\xEDodo"), /* @__PURE__ */ React.createElement(
+          "select",
+          {
+            value: filtroMes,
+            onChange: (e) => {
+              setFiltroMes(e.target.value);
+              if (e.target.value !== "todos") {
+                setDataInicio("");
+                setDataFim("");
+              }
+            },
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          },
+          /* @__PURE__ */ React.createElement("option", { value: "todos" }, "Todos os meses"),
+          /* @__PURE__ */ React.createElement("option", { value: "mes-atual" }, "M\\xEAs atual"),
+          /* @__PURE__ */ React.createElement("option", { value: "mes-passado" }, "M\\xEAs passado"),
+          /* @__PURE__ */ React.createElement("option", { value: "ultimos-30" }, "\\xDAltimos 30 dias")
+        )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-xs text-gray-400 mb-1" }, "Tipo"), /* @__PURE__ */ React.createElement(
+          "select",
+          {
+            value: filtroTipo,
+            onChange: (e) => setFiltroTipo(e.target.value),
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
+          },
+          /* @__PURE__ */ React.createElement("option", { value: "todos" }, "Todos"),
+          /* @__PURE__ */ React.createElement("option", { value: "produtos" }, "Produtos"),
+          /* @__PURE__ */ React.createElement("option", { value: "servicos" }, "Servi\\xE7os")
+        ))), (dataInicio || dataFim || filtroMes !== "mes-atual" || filtroTipo !== "todos") && /* @__PURE__ */ React.createElement("div", { className: "flex justify-center lg:justify-end pt-2" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              setDataInicio("");
+              setDataFim("");
+              setFiltroMes("mes-atual");
+              setFiltroTipo("todos");
+            },
+            className: "bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-medium"
+          },
+          "Limpar Filtros"
+        )))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 rounded-lg overflow-hidden" }, /* @__PURE__ */ React.createElement("div", { className: "hidden md:block overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full table-fixed" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-slate-700" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-24" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-48" }, "Cliente"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-64" }, "Itens"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-32" }, "Total"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-32 hidden lg:table-cell" }, "Pre\\xE7o de Custo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-32" }, "Valor L\\xEDquido"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-28 hidden xl:table-cell" }, "Data"), /* @__PURE__ */ React.createElement("th", { className: "px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-20" }, "A\\xE7\\xF5es"))), /* @__PURE__ */ React.createElement("tbody", { className: "bg-slate-800 divide-y divide-slate-700" }, filteredVendas.map((venda) => /* @__PURE__ */ React.createElement("tr", { key: venda.codigo, className: "hover:bg-slate-700" }, /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-sm text-blue-400 font-medium" }, venda.codigo), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-sm text-white" }, /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, getClienteName(venda.cliente_codigo))), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-sm text-white" }, /* @__PURE__ */ React.createElement("div", null, venda.produto_codigo && /* @__PURE__ */ React.createElement("div", { className: "text-blue-400" }, venda.quantidade || 1, "x ", getProdutoName(venda.produto_codigo)), venda.servico_codigo && /* @__PURE__ */ React.createElement("div", { className: "text-purple-400" }, venda.quantidade || 1, "x ", getServicoName(venda.servico_codigo)))), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-sm text-green-400 font-semibold" }, formatCurrency(venda.valor_total)), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-sm text-red-400 font-medium hidden lg:table-cell" }, formatCurrency(venda.custo_fixo)), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-sm text-emerald-400 font-semibold" }, formatCurrency(venda.lucro)), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3 text-sm text-gray-300 hidden xl:table-cell" }, venda.data ? (/* @__PURE__ */ new Date(venda.data + "T12:00:00")).toLocaleDateString("pt-BR") : "-"), /* @__PURE__ */ React.createElement("td", { className: "px-3 py-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex space-x-1" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleEditSale(venda),
+            className: "text-blue-400 hover:text-blue-300 p-1",
+            title: "Editar venda"
+          },
+          /* @__PURE__ */ React.createElement(Edit, { size: 14 })
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleDeleteSale(venda.codigo),
+            className: "text-red-400 hover:text-red-300 p-1",
+            title: "Excluir venda"
+          },
+          /* @__PURE__ */ React.createElement(Trash2, { size: 14 })
+        )))))))), /* @__PURE__ */ React.createElement("div", { className: "md:hidden" }, /* @__PURE__ */ React.createElement("div", { className: "space-y-3 p-3" }, filteredVendas.map((venda) => /* @__PURE__ */ React.createElement("div", { key: venda.codigo, className: "bg-slate-700 rounded-lg p-4 space-y-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex justify-between items-start" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-sm font-medium text-blue-400" }, venda.codigo), /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400" }, venda.data ? (/* @__PURE__ */ new Date(venda.data + "T12:00:00")).toLocaleDateString("pt-BR") : "-")), /* @__PURE__ */ React.createElement("div", { className: "flex space-x-2" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleEditSale(venda),
+            className: "text-blue-400 hover:text-blue-300 p-1",
+            title: "Editar venda"
+          },
+          /* @__PURE__ */ React.createElement(Edit, { size: 16 })
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => handleDeleteSale(venda.codigo),
+            className: "text-red-400 hover:text-red-300 p-1",
+            title: "Excluir venda"
+          },
+          /* @__PURE__ */ React.createElement(Trash2, { size: 16 })
+        ))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Cliente"), /* @__PURE__ */ React.createElement("div", { className: "text-sm font-medium text-white" }, getClienteName(venda.cliente_codigo))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Item"), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-white" }, venda.produto_codigo && /* @__PURE__ */ React.createElement("div", { className: "text-blue-400" }, venda.quantidade || 1, "x ", getProdutoName(venda.produto_codigo)), venda.servico_codigo && /* @__PURE__ */ React.createElement("div", { className: "text-purple-400" }, venda.quantidade || 1, "x ", getServicoName(venda.servico_codigo)))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Total"), /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-green-400" }, formatCurrency(venda.valor_total))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Lucro"), /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-emerald-400" }, formatCurrency(venda.lucro)))), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Custo"), /* @__PURE__ */ React.createElement("div", { className: "text-sm font-medium text-red-400" }, formatCurrency(venda.custo_fixo))))), filteredVendas.length === 0 && /* @__PURE__ */ React.createElement("div", { className: "text-center py-8 text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "text-lg mb-2" }, "\\u{1F4CB}"), /* @__PURE__ */ React.createElement("div", { className: "text-sm" }, "Nenhuma venda encontrada"))))));
+      case "importacao":
+        return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Importa\\xE7\\xE3o e Exporta\\xE7\\xE3o"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Fa\\xE7a backup e restaure seus dados"))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-6" }, /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-6 rounded-lg border border-green-500/30" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-4" }, /* @__PURE__ */ React.createElement(Download, { className: "h-6 w-6 text-green-400 mr-3" }), /* @__PURE__ */ React.createElement("h2", { className: "text-xl font-semibold text-white" }, "Exportar Dados")), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 mb-6" }, "Baixe seus dados em formato CSV para backup ou migra\\xE7\\xE3o"), /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => exportarCSV("clientes"),
+            disabled: isExporting || clientes.length === 0,
+            className: "w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          },
+          /* @__PURE__ */ React.createElement(User, { size: 16 }),
+          "Exportar Clientes (",
+          clientes.length,
+          ")"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => exportarCSV("produtos"),
+            disabled: isExporting || produtos.length === 0,
+            className: "w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          },
+          /* @__PURE__ */ React.createElement(Package, { size: 16 }),
+          "Exportar Produtos (",
+          produtos.length,
+          ")"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => exportarCSV("servicos"),
+            disabled: isExporting || servicos.length === 0,
+            className: "w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 text-white py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          },
+          /* @__PURE__ */ React.createElement(Wrench, { size: 16 }),
+          "Exportar Servi\\xE7os (",
+          servicos.length,
+          ")"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => exportarCSV("vendas"),
+            disabled: isExporting || vendas.length === 0,
+            className: "w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 text-white py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          },
+          /* @__PURE__ */ React.createElement(TrendingUp, { size: 16 }),
+          "Exportar Vendas (",
+          vendas.length,
+          ")"
+        ), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-3" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => exportarCSV("todos"),
+            disabled: isExporting,
+            className: "w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:from-gray-600 disabled:to-gray-600 text-white py-4 px-4 rounded-lg flex items-center justify-center gap-2 font-semibold transition-all"
+          },
+          /* @__PURE__ */ React.createElement(Database, { size: 16 }),
+          isExporting ? "Exportando..." : "Backup Completo"
+        )))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-6 rounded-lg border border-blue-500/30" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-4" }, /* @__PURE__ */ React.createElement(Upload, { className: "h-6 w-6 text-blue-400 mr-3" }), /* @__PURE__ */ React.createElement("h2", { className: "text-xl font-semibold text-white" }, "Importar Dados")), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 mb-6" }, "Restaure ou importe dados de arquivos CSV"), /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Importar Clientes"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "file",
+            accept: ".csv",
+            onChange: (e) => handleFileUpload(e, "clientes"),
+            disabled: isImporting,
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:cursor-pointer hover:file:bg-blue-700"
+          }
+        )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Importar Produtos"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "file",
+            accept: ".csv",
+            onChange: (e) => handleFileUpload(e, "produtos"),
+            disabled: isImporting,
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-purple-600 file:text-white file:cursor-pointer hover:file:bg-purple-700"
+          }
+        )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Importar Servi\\xE7os"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "file",
+            accept: ".csv",
+            onChange: (e) => handleFileUpload(e, "servicos"),
+            disabled: isImporting,
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-orange-600 file:text-white file:cursor-pointer hover:file:bg-orange-700"
+          }
+        )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Importar Vendas"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "file",
+            accept: ".csv",
+            onChange: (e) => handleFileUpload(e, "vendas"),
+            disabled: isImporting,
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:cursor-pointer hover:file:bg-emerald-700"
+          }
+        )), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-3" }, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Restaurar Backup Completo"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "file",
+            accept: ".csv",
+            onChange: (e) => handleFileUpload(e, "todos"),
+            disabled: isImporting,
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gradient-to-r file:from-green-600 file:to-blue-600 file:text-white file:cursor-pointer hover:file:from-green-700 hover:file:to-blue-700"
+          }
+        ))), isImporting && /* @__PURE__ */ React.createElement("div", { className: "mt-4 p-3 bg-blue-500/20 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center text-blue-400" }, /* @__PURE__ */ React.createElement("div", { className: "animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400 mr-2" }), "Importando dados...")))), importLog.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-4" }, /* @__PURE__ */ React.createElement(FileText, { className: "h-5 w-5 text-gray-400 mr-3" }), /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white" }, "Log de Importa\\xE7\\xE3o")), /* @__PURE__ */ React.createElement("div", { className: "space-y-2 max-h-64 overflow-y-auto" }, importLog.map((entry, index) => /* @__PURE__ */ React.createElement(
+          "div",
+          {
+            key: index,
+            className: \`p-3 rounded-lg text-sm \${entry.startsWith("\\u2705") ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}\`
+          },
+          entry
+        ))), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setImportLog([]),
+            className: "mt-4 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm"
+          },
+          "Limpar Log"
+        )), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-4" }, /* @__PURE__ */ React.createElement(AlertTriangle, { className: "h-5 w-5 text-yellow-400 mr-3" }), /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white" }, "Informa\\xE7\\xF5es Importantes")), /* @__PURE__ */ React.createElement("div", { className: "space-y-4 text-gray-300 text-sm" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Exporta\\xE7\\xE3o:"), /* @__PURE__ */ React.createElement("ul", { className: "space-y-1 text-xs" }, /* @__PURE__ */ React.createElement("li", null, "\\u2022 Os arquivos s\\xE3o gerados em formato CSV padr\\xE3o"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 O backup completo inclui todas as tabelas"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Dados s\\xE3o exportados com codifica\\xE7\\xE3o UTF-8"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Campos vazios s\\xE3o representados como valores nulos"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Importa\\xE7\\xE3o:"), /* @__PURE__ */ React.createElement("ul", { className: "space-y-1 text-xs" }, /* @__PURE__ */ React.createElement("li", null, "\\u2022 Aceita apenas arquivos CSV"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Dados duplicados s\\xE3o atualizados (baseado no c\\xF3digo)"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Valida\\xE7\\xE3o autom\\xE1tica de tipos de dados"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Process em lotes para melhor performance")))), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-4" }, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Formato dos Arquivos CSV:"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("strong", null, "Clientes:"), " codigo, nome, telefone, observacao, data_cadastro", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("strong", null, "Produtos:"), " codigo, nome, valor, custo, estoque"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("strong", null, "Servi\\xE7os:"), " codigo, nome, preco_hora, preco_custo", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("strong", null, "Vendas:"), " codigo, data, cliente_codigo, produto_codigo, servico_codigo, quantidade, valor_total, custo_fixo, lucro, observacao"))))), /* @__PURE__ */ React.createElement("div", { className: "bg-gradient-to-r from-slate-800 to-slate-700 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4 flex items-center" }, /* @__PURE__ */ React.createElement(Database, { className: "mr-3", size: 20 }), "Estat\\xEDsticas do Sistema"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 lg:grid-cols-4 gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-blue-400" }, clientes.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Clientes")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-purple-400" }, produtos.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Produtos")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-orange-400" }, servicos.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Servi\\xE7os")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-emerald-400" }, vendas.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Vendas"))), /* @__PURE__ */ React.createElement("div", { className: "mt-4 pt-4 border-t border-slate-600 text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-lg font-bold text-green-400" }, clientes.length + produtos.length + servicos.length + vendas.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Total de Registros"))));
+      default:
+        return /* @__PURE__ */ React.createElement("div", { className: "text-white" }, "P\\xE1gina n\\xE3o encontrada");
+    }
+  };
+  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-slate-900 flex relative" }, isSidebarOpen && /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      className: "fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden",
+      onClick: () => setIsSidebarOpen(false)
+    }
+  ), /* @__PURE__ */ React.createElement("div", { className: \`
+        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-800 border-r border-slate-700 transform transition-transform duration-300 ease-in-out lg:transform-none
+        \${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+      \` }, /* @__PURE__ */ React.createElement("div", { className: "p-6" }, /* @__PURE__ */ React.createElement("h1", { className: "text-xl font-bold text-blue-400" }, "TEKINFORM\\xC1TICA"), /* @__PURE__ */ React.createElement("p", { className: "text-sm text-gray-400" }, "CEO: Ricardo Moraes")), /* @__PURE__ */ React.createElement("nav", { className: "mt-6" }, menuItems.map((item) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: item.id,
+      onClick: () => {
+        setCurrentPage(item.id);
+        setIsSidebarOpen(false);
+      },
+      className: \`w-full flex items-center px-6 py-3 text-left hover:bg-slate-700 \${currentPage === item.id ? "bg-blue-600 text-white" : "text-gray-300"}\`
+    },
+    /* @__PURE__ */ React.createElement(item.icon, { size: 20, className: "mr-3" }),
+    item.name
+  )))), /* @__PURE__ */ React.createElement("div", { className: "flex-1 flex flex-col lg:ml-0" }, /* @__PURE__ */ React.createElement("header", { className: "bg-slate-800 border-b border-slate-700 px-4 lg:px-6 py-4" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center space-x-4" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setIsSidebarOpen(true),
+      className: "lg:hidden p-2 text-gray-400 hover:text-white hover:bg-slate-700 rounded-lg"
+    },
+    /* @__PURE__ */ React.createElement(Menu, { size: 20 })
+  ), /* @__PURE__ */ React.createElement("div", { className: "relative hidden sm:block" }, /* @__PURE__ */ React.createElement(Search, { className: "absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400", size: 20 }), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "text",
+      placeholder: "Buscar...",
+      value: searchTerm,
+      onChange: (e) => setSearchTerm(e.target.value),
+      className: "bg-slate-700 text-white pl-10 pr-4 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none w-64"
+    }
+  )), /* @__PURE__ */ React.createElement("div", { className: "sm:hidden flex-1" }, /* @__PURE__ */ React.createElement("div", { className: "relative" }, /* @__PURE__ */ React.createElement(Search, { className: "absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400", size: 16 }), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "text",
+      placeholder: "Buscar...",
+      value: searchTerm,
+      onChange: (e) => setSearchTerm(e.target.value),
+      className: "bg-slate-700 text-white pl-8 pr-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none w-full text-sm"
+    }
+  )))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center space-x-2 lg:space-x-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-right hidden sm:block" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs lg:text-sm text-white" }, "Tekinform\\xE1tica"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-gray-400" }, "Ricardo Loja")), /* @__PURE__ */ React.createElement("div", { className: "w-8 h-8 bg-pink-500 rounded-full flex items-center justify-center" }, /* @__PURE__ */ React.createElement("span", { className: "text-white text-xs lg:text-sm font-semibold" }, "TE"))))), /* @__PURE__ */ React.createElement("main", { className: "flex-1 p-4 lg:p-6" }, loading ? /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-center h-64" }, /* @__PURE__ */ React.createElement("div", { className: "text-white" }, "Carregando...")) : renderPage())), /* @__PURE__ */ React.createElement("div", { className: "fixed top-4 right-4 z-50" }, toasts.map((toast) => /* @__PURE__ */ React.createElement(Toast, { key: toast.id, toast, onRemove: removeToast }))), /* @__PURE__ */ React.createElement(
+    Modal,
+    {
+      isOpen: showClientModal,
+      onClose: () => setShowClientModal(false),
+      title: editingItem ? "Editar Cliente" : "Novo Cliente"
+    },
+    /* @__PURE__ */ React.createElement("form", { onSubmit: handleSaveClient, className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: clientForm.codigo,
+        onChange: (e) => setClientForm({ ...clientForm, codigo: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "Ex: CLI-001",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Nome do Cliente"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: clientForm.nome,
+        onChange: (e) => setClientForm({ ...clientForm, nome: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "Nome completo do cliente",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Telefone"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "tel",
+        value: clientForm.telefone,
+        onChange: (e) => setClientForm({ ...clientForm, telefone: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "(11) 99999-9999",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Data de Cadastro"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "date",
+        value: clientForm.data_cadastro,
+        onChange: (e) => setClientForm({ ...clientForm, data_cadastro: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    ))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Observa\\xE7\\xE3o"), /* @__PURE__ */ React.createElement(
+      "textarea",
+      {
+        value: clientForm.observacao,
+        onChange: (e) => setClientForm({ ...clientForm, observacao: e.target.value }),
+        rows: "3",
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "Informa\\xE7\\xF5es adicionais sobre o cliente..."
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-4" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "submit",
+        className: "flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg"
+      },
+      editingItem ? "Atualizar" : "Cadastrar"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => setShowClientModal(false),
+        className: "flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg"
+      },
+      "Cancelar"
+    )))
+  ), /* @__PURE__ */ React.createElement(
+    Modal,
+    {
+      isOpen: showProductModal,
+      onClose: () => setShowProductModal(false),
+      title: editingItem ? "Editar Produto" : "Novo Produto"
+    },
+    /* @__PURE__ */ React.createElement("form", { onSubmit: handleSaveProduct, className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: productForm.codigo,
+        onChange: (e) => setProductForm({ ...productForm, codigo: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Nome do Produto"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: productForm.nome,
+        onChange: (e) => setProductForm({ ...productForm, nome: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Pre\\xE7o de Venda"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: productForm.valor,
+        onChange: (e) => setProductForm({ ...productForm, valor: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Custo"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: productForm.custo,
+        onChange: (e) => setProductForm({ ...productForm, custo: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    ))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Estoque"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        value: productForm.estoque,
+        onChange: (e) => setProductForm({ ...productForm, estoque: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-4" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "submit",
+        className: "flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg"
+      },
+      editingItem ? "Atualizar" : "Cadastrar"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => setShowProductModal(false),
+        className: "flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg"
+      },
+      "Cancelar"
+    )))
+  ), /* @__PURE__ */ React.createElement(
+    Modal,
+    {
+      isOpen: showServiceModal,
+      onClose: () => setShowServiceModal(false),
+      title: editingItem ? "Editar Servi\\xE7o" : "Novo Servi\\xE7o"
+    },
+    /* @__PURE__ */ React.createElement("form", { onSubmit: handleSaveService, className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: serviceForm.codigo,
+        onChange: (e) => setServiceForm({ ...serviceForm, codigo: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Nome do Servi\\xE7o"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: serviceForm.nome,
+        onChange: (e) => setServiceForm({ ...serviceForm, nome: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Pre\\xE7o por Hora"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: serviceForm.preco_hora,
+        onChange: (e) => setServiceForm({ ...serviceForm, preco_hora: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-xs font-medium text-gray-300 mb-1" }, "Pre\\xE7o de Custo"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: serviceForm.preco_custo,
+        onChange: (e) => setServiceForm({ ...serviceForm, preco_custo: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    ))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-4" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "submit",
+        className: "flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg"
+      },
+      editingItem ? "Atualizar" : "Cadastrar"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => setShowServiceModal(false),
+        className: "flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg"
+      },
+      "Cancelar"
+    )))
+  ), /* @__PURE__ */ React.createElement(
+    Modal,
+    {
+      isOpen: showSaleModal,
+      onClose: () => setShowSaleModal(false),
+      title: "Nova Venda",
+      size: "6xl"
+    },
+    /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 bg-slate-700 rounded-lg" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "C\\xF3digo da Venda"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: getNextSaleCode(),
+        readOnly: true,
+        className: "w-full bg-slate-600 text-blue-400 px-3 py-2 rounded-lg border border-slate-500 font-mono text-lg"
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "relative" }, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Cliente *"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        placeholder: "Digite o nome do cliente...",
+        value: buscaCliente,
+        onChange: (e) => {
+          setBuscaCliente(e.target.value);
+          setMostrarSugestoesCliente(e.target.value.length > 0);
+          if (!e.target.value) {
+            setNovaVenda({ ...novaVenda, cliente: null });
+          }
+        },
+        className: "w-full bg-slate-600 text-white px-3 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    ), mostrarSugestoesCliente && getSugestoesClientes().length > 0 && /* @__PURE__ */ React.createElement("div", { className: "absolute top-full left-0 right-0 bg-slate-600 border border-slate-500 rounded-lg mt-1 z-50 max-h-48 overflow-y-auto" }, getSugestoesClientes().map((cliente) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: cliente.codigo,
+        type: "button",
+        onClick: () => selecionarCliente(cliente),
+        className: "w-full text-left px-3 py-2 hover:bg-slate-500 text-white border-b border-slate-500 last:border-b-0"
+      },
+      /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, cliente.nome),
+      /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400" }, cliente.codigo, " \\u2022 ", cliente.telefone)
+    )))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Data da Venda"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "date",
+        value: novaVenda.data,
+        onChange: (e) => setNovaVenda({ ...novaVenda, data: e.target.value }),
+        className: "w-full bg-slate-600 text-white px-3 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    ))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-6" }, /* @__PURE__ */ React.createElement("div", { className: "bg-slate-700 p-4 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4 flex items-center" }, /* @__PURE__ */ React.createElement(Package, { className: "mr-2", size: 20 }), "Produtos Dispon\\xEDveis"), /* @__PURE__ */ React.createElement("div", { className: "relative mb-4" }, /* @__PURE__ */ React.createElement(Search, { className: "absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400", size: 16 }), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        placeholder: "Buscar produtos...",
+        value: buscaProduto,
+        onChange: (e) => {
+          setBuscaProduto(e.target.value);
+          setMostrarSugestoesProduto(e.target.value.length > 0);
+        },
+        className: "w-full bg-slate-600 text-white pl-10 pr-4 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "space-y-2 max-h-64 overflow-y-auto" }, (buscaProduto ? getSugestoesProdutos() : produtos.slice(0, 10)).map((produto) => {
+      const estoqueDisponivel = parseInt(produto.estoque || 0);
+      const produtoJaAdicionado = novaVenda.itens.find((item) => item.codigo === produto.codigo && item.tipo === "produto");
+      const desabilitado = estoqueDisponivel <= 0 || produtoJaAdicionado;
+      return /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          key: produto.codigo,
+          className: \`flex items-center justify-between p-3 rounded-lg transition-colors \${desabilitado ? "bg-slate-700 opacity-60" : "bg-slate-600 hover:bg-slate-500"}\`
+        },
+        /* @__PURE__ */ React.createElement("div", { className: "flex-1" }, /* @__PURE__ */ React.createElement("div", { className: \`font-medium \${desabilitado ? "text-gray-400" : "text-white"}\` }, produto.nome, produtoJaAdicionado && /* @__PURE__ */ React.createElement("span", { className: "ml-2 text-xs text-yellow-400" }, "(J\\xE1 adicionado)")), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-400" }, produto.codigo, " \\u2022 Estoque: ", estoqueDisponivel, " \\u2022 ", formatCurrency(produto.valor), estoqueDisponivel <= 0 && /* @__PURE__ */ React.createElement("span", { className: "ml-1 text-red-400" }, "(Sem estoque)"))),
+        /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => adicionarProduto(produto),
+            disabled: desabilitado,
+            className: \`px-3 py-1 rounded text-sm transition-colors \${desabilitado ? "bg-gray-600 text-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 text-white"}\`
+          },
+          "Adicionar"
+        )
+      );
+    }))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-700 p-4 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4 flex items-center" }, /* @__PURE__ */ React.createElement(Wrench, { className: "mr-2", size: 20 }), "Servi\\xE7os Dispon\\xEDveis"), /* @__PURE__ */ React.createElement("div", { className: "relative mb-4" }, /* @__PURE__ */ React.createElement(Search, { className: "absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400", size: 16 }), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        placeholder: "Buscar servi\\xE7os...",
+        value: buscaServico,
+        onChange: (e) => {
+          setBuscaServico(e.target.value);
+          setMostrarSugestoesServico(e.target.value.length > 0);
+        },
+        className: "w-full bg-slate-600 text-white pl-10 pr-4 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "space-y-2 max-h-64 overflow-y-auto" }, (buscaServico ? getSugestoesServicos() : servicos.slice(0, 10)).map((servico) => {
+      const servicoJaAdicionado = novaVenda.itens.find((item) => item.codigo === servico.codigo && item.tipo === "servico");
+      return /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          key: servico.codigo,
+          className: \`flex items-center justify-between p-3 rounded-lg transition-colors \${servicoJaAdicionado ? "bg-slate-700 opacity-60" : "bg-slate-600 hover:bg-slate-500"}\`
+        },
+        /* @__PURE__ */ React.createElement("div", { className: "flex-1" }, /* @__PURE__ */ React.createElement("div", { className: \`font-medium \${servicoJaAdicionado ? "text-gray-400" : "text-white"}\` }, servico.nome, servicoJaAdicionado && /* @__PURE__ */ React.createElement("span", { className: "ml-2 text-xs text-yellow-400" }, "(J\\xE1 adicionado)")), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-400" }, servico.codigo, " \\u2022 ", formatCurrency(servico.preco_hora), "/h")),
+        /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => adicionarServico(servico),
+            disabled: servicoJaAdicionado,
+            className: \`px-3 py-1 rounded text-sm transition-colors \${servicoJaAdicionado ? "bg-gray-600 text-gray-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700 text-white"}\`
+          },
+          "Adicionar"
+        )
+      );
+    })))), novaVenda.itens.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "bg-slate-700 p-4 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4 flex items-center" }, /* @__PURE__ */ React.createElement(ShoppingCart, { className: "mr-2", size: 20 }), "Itens da Venda (", novaVenda.itens.length, ")"), /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { className: "border-b border-slate-600" }, /* @__PURE__ */ React.createElement("th", { className: "text-left py-2 text-gray-300" }, "Item"), /* @__PURE__ */ React.createElement("th", { className: "text-center py-2 text-gray-300 w-24" }, "Qtd"), /* @__PURE__ */ React.createElement("th", { className: "text-center py-2 text-gray-300 w-32" }, "Pre\\xE7o Venda"), /* @__PURE__ */ React.createElement("th", { className: "text-center py-2 text-gray-300 w-32" }, "Pre\\xE7o Custo"), /* @__PURE__ */ React.createElement("th", { className: "text-center py-2 text-gray-300 w-32" }, "Total"), /* @__PURE__ */ React.createElement("th", { className: "text-center py-2 text-gray-300 w-20" }, "A\\xE7\\xF5es"))), /* @__PURE__ */ React.createElement("tbody", null, novaVenda.itens.map((item) => /* @__PURE__ */ React.createElement("tr", { key: item.id, className: "border-b border-slate-600" }, /* @__PURE__ */ React.createElement("td", { className: "py-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center" }, /* @__PURE__ */ React.createElement("span", { className: \`inline-block w-2 h-2 rounded-full mr-2 \${item.tipo === "produto" ? "bg-blue-400" : "bg-purple-400"}\` }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium text-white" }, item.nome), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-400" }, item.codigo, " \\u2022 ", item.tipo === "produto" ? "Produto" : "Servi\\xE7o", item.tipo === "produto" && \` \\u2022 Estoque: \${item.estoque_disponivel}\`)))), /* @__PURE__ */ React.createElement("td", { className: "py-3 text-center" }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        min: "1",
+        max: item.tipo === "produto" ? item.estoque_disponivel : void 0,
+        value: item.quantidade,
+        onChange: (e) => atualizarItem(item.id, "quantidade", parseInt(e.target.value) || 1),
+        className: "w-16 bg-slate-600 text-white text-center px-2 py-1 rounded border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    )), /* @__PURE__ */ React.createElement("td", { className: "py-3 text-center" }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: item.preco_venda,
+        onChange: (e) => atualizarItem(item.id, "preco_venda", parseFloat(e.target.value) || 0),
+        className: "w-24 bg-slate-600 text-green-400 text-center px-2 py-1 rounded border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    )), /* @__PURE__ */ React.createElement("td", { className: "py-3 text-center" }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: item.preco_custo,
+        onChange: (e) => atualizarItem(item.id, "preco_custo", parseFloat(e.target.value) || 0),
+        className: "w-24 bg-slate-600 text-red-400 text-center px-2 py-1 rounded border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    )), /* @__PURE__ */ React.createElement("td", { className: "py-3 text-center" }, /* @__PURE__ */ React.createElement("span", { className: "font-semibold text-blue-400" }, formatCurrency(item.quantidade * item.preco_venda))), /* @__PURE__ */ React.createElement("td", { className: "py-3 text-center" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => removerItem(item.id),
+        className: "text-red-400 hover:text-red-300 p-1"
+      },
+      /* @__PURE__ */ React.createElement(Trash2, { size: 16 })
+    )))))))), novaVenda.itens.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "bg-gradient-to-r from-slate-700 to-slate-600 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4 flex items-center" }, /* @__PURE__ */ React.createElement(Calculator, { className: "mr-2", size: 20 }), "Resumo Financeiro"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-4 gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-blue-400" }, formatCurrency(calcularTotais().valorTotal)), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Total da Venda")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-red-400" }, formatCurrency(calcularTotais().custoTotal)), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Custo Total")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-green-400" }, formatCurrency(calcularTotais().lucroTotal)), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Lucro Bruto")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-yellow-400" }, calcularTotais().margemLucro.toFixed(1), "%"), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Margem de Lucro")))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Observa\\xE7\\xF5es"), /* @__PURE__ */ React.createElement(
+      "textarea",
+      {
+        value: novaVenda.observacao,
+        onChange: (e) => setNovaVenda({ ...novaVenda, observacao: e.target.value }),
+        rows: "3",
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "Informa\\xE7\\xF5es adicionais sobre a venda..."
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row gap-3 pt-4" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: finalizarVenda,
+        disabled: !novaVenda.cliente || novaVenda.itens.length === 0,
+        className: "flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center gap-2"
+      },
+      /* @__PURE__ */ React.createElement(Check, { size: 20 }),
+      "Finalizar Venda"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => setShowSaleModal(false),
+        className: "flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 px-6 rounded-lg font-medium"
+      },
+      "Cancelar"
+    )), (!novaVenda.cliente || novaVenda.itens.length === 0) && /* @__PURE__ */ React.createElement("div", { className: "bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center text-yellow-400" }, /* @__PURE__ */ React.createElement(AlertTriangle, { size: 16, className: "mr-2" }), /* @__PURE__ */ React.createElement("span", { className: "text-sm" }, !novaVenda.cliente && "Selecione um cliente. ", novaVenda.itens.length === 0 && "Adicione pelo menos um item \\xE0 venda."))))
+  ), /* @__PURE__ */ React.createElement(
+    Modal,
+    {
+      isOpen: showEditSaleModal,
+      onClose: () => setShowEditSaleModal(false),
+      title: "Editar Venda",
+      size: "4xl"
+    },
+    /* @__PURE__ */ React.createElement("form", { onSubmit: handleSaveEditSale, className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 bg-slate-700 rounded-lg" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "C\\xF3digo da Venda"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: vendaEditando.codigo,
+        readOnly: true,
+        className: "w-full bg-slate-600 text-blue-400 px-3 py-2 rounded-lg border border-slate-500 font-mono text-lg"
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "relative" }, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Cliente *"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        placeholder: "Digite o nome do cliente...",
+        value: buscaCliente,
+        onChange: (e) => {
+          setBuscaCliente(e.target.value);
+          setMostrarSugestoesCliente(e.target.value.length > 0);
+          if (!e.target.value) {
+            setVendaEditando({ ...vendaEditando, cliente: null });
+          }
+        },
+        className: "w-full bg-slate-600 text-white px-3 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    ), mostrarSugestoesCliente && getSugestoesClientes().length > 0 && /* @__PURE__ */ React.createElement("div", { className: "absolute top-full left-0 right-0 bg-slate-600 border border-slate-500 rounded-lg mt-1 z-50 max-h-48 overflow-y-auto" }, getSugestoesClientes().map((cliente) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: cliente.codigo,
+        type: "button",
+        onClick: () => {
+          setVendaEditando({ ...vendaEditando, cliente });
+          setBuscaCliente(cliente.nome);
+          setMostrarSugestoesCliente(false);
+        },
+        className: "w-full text-left px-3 py-2 hover:bg-slate-500 text-white border-b border-slate-500 last:border-b-0"
+      },
+      /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, cliente.nome),
+      /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400" }, cliente.codigo, " \\u2022 ", cliente.telefone)
+    )))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Data da Venda"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "date",
+        value: vendaEditando.data,
+        onChange: (e) => setVendaEditando({ ...vendaEditando, data: e.target.value }),
+        className: "w-full bg-slate-600 text-white px-3 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    ))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-700 p-4 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4" }, "Detalhes da Venda"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Quantidade"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        min: "1",
+        value: vendaEditando.quantidade,
+        onChange: (e) => setVendaEditando({ ...vendaEditando, quantidade: parseInt(e.target.value) || 1 }),
+        className: "w-full bg-slate-600 text-white px-3 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Valor Total"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: vendaEditando.valor_total,
+        onChange: (e) => setVendaEditando({ ...vendaEditando, valor_total: parseFloat(e.target.value) || 0 }),
+        className: "w-full bg-slate-600 text-green-400 px-3 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Custo Fixo"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: vendaEditando.custo_fixo,
+        onChange: (e) => setVendaEditando({ ...vendaEditando, custo_fixo: parseFloat(e.target.value) || 0 }),
+        className: "w-full bg-slate-600 text-red-400 px-3 py-2 rounded-lg border border-slate-500 focus:border-blue-500 focus:outline-none"
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Lucro"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: formatCurrency(vendaEditando.valor_total - vendaEditando.custo_fixo),
+        readOnly: true,
+        className: "w-full bg-slate-600 text-emerald-400 px-3 py-2 rounded-lg border border-slate-500 font-semibold"
+      }
+    )))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-700 p-4 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4" }, "Item da Venda"), /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, vendaEditando.produto_codigo && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Produto"), /* @__PURE__ */ React.createElement("div", { className: "flex items-center p-3 bg-slate-600 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "w-2 h-2 rounded-full bg-blue-400 mr-3" }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium text-white" }, getProdutoName(vendaEditando.produto_codigo)), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-400" }, "C\\xF3digo: ", vendaEditando.produto_codigo)))), vendaEditando.servico_codigo && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Servi\\xE7o"), /* @__PURE__ */ React.createElement("div", { className: "flex items-center p-3 bg-slate-600 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "w-2 h-2 rounded-full bg-purple-400 mr-3" }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium text-white" }, getServicoName(vendaEditando.servico_codigo)), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-400" }, "C\\xF3digo: ", vendaEditando.servico_codigo)))))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Observa\\xE7\\xF5es"), /* @__PURE__ */ React.createElement(
+      "textarea",
+      {
+        value: vendaEditando.observacao,
+        onChange: (e) => setVendaEditando({ ...vendaEditando, observacao: e.target.value }),
+        rows: "3",
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "Informa\\xE7\\xF5es adicionais sobre a venda..."
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "bg-gradient-to-r from-slate-700 to-slate-600 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4" }, "Resumo Financeiro"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-green-400" }, formatCurrency(vendaEditando.valor_total)), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Total da Venda")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-red-400" }, formatCurrency(vendaEditando.custo_fixo)), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Custo Total")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-emerald-400" }, formatCurrency(vendaEditando.valor_total - vendaEditando.custo_fixo)), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Lucro L\\xEDquido")))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row gap-3 pt-4" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "submit",
+        disabled: !vendaEditando.cliente,
+        className: "flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center gap-2"
+      },
+      /* @__PURE__ */ React.createElement(Check, { size: 20 }),
+      "Salvar Altera\\xE7\\xF5es"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => setShowEditSaleModal(false),
+        className: "flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 px-6 rounded-lg font-medium"
+      },
+      "Cancelar"
+    )), !vendaEditando.cliente && /* @__PURE__ */ React.createElement("div", { className: "bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center text-yellow-400" }, /* @__PURE__ */ React.createElement(AlertTriangle, { size: 16, className: "mr-2" }), /* @__PURE__ */ React.createElement("span", { className: "text-sm" }, "Selecione um cliente para continuar."))))
+  ));
+};
+var stdin_default = SistemaGerenciamento;
+export {
+  stdin_default as default
+};
+`;
+          }
+
+          // Create a blob URL from the executable code
+          const blob = new Blob([componentCode], { type: 'text/javascript' });
+          const blobUrl = URL.createObjectURL(blob);
+
+          // Import the default export from the blob URL
+          const moduleImport = await import(blobUrl);
+          const Component = moduleImport.default;
+
+          // Clean up the blob URL
+          URL.revokeObjectURL(blobUrl);
+
+          if (Component) {
+              const rootElement = document.getElementById('root');
+              const root = createRoot(rootElement);
+
+              // Simple error boundary
+              const ErrorBoundary = ({ children }) => {
+                  try {
+                      return children;
+                  } catch (error) {
+                      console.error('Component render error:', error);
+                      return React.createElement('div', {
+                          style: { padding: '20px', color: '#d32f2f', background: '#ffebee', borderRadius: '4px' }
+                      }, [
+                          React.createElement('h3', { key: 'title' }, 'Component Error'),
+                          React.createElement('p', { key: 'error' }, 'Error: ' + error.message)
+                      ]);
+                  }
+              };
+
+              root.render(React.createElement(ErrorBoundary, {}, React.createElement(Component)));
+          } else {
+              console.error('No component found in module export');
+              document.getElementById('root').innerHTML = '<div style="padding: 20px; color: #666;">No React component found - check console for details</div>';
+          }
+      } catch (error) {
+          console.error('Error loading component:', error);
+          document.getElementById('root').innerHTML = `
+              <div style="padding: 20px; color: #d32f2f; background: #ffebee; border-radius: 4px;">
+                  <h3>Error loading component</h3>
+                  <p><strong>Error:</strong> ${error.message}</p>
+                  <p>Please check the browser console for more details.</p>
+              </div>
+          `;
+      }
+    </script>
+  </body>
+</html>
