@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Search, Plus, Edit, Trash2, ShoppingCart, User, Package, Wrench, TrendingUp, X, Check, AlertTriangle, Menu, Calculator, File, Upload, Download, FileText, Database } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, ShoppingCart, User, Package, Wrench, TrendingUp, X, Check, AlertTriangle, Menu, Calculator, File, Upload, Download, FileText, Database, ChevronUp, ChevronDown, ArrowUpDown, CreditCard } from 'lucide-react';
 
 // Configuração do Supabase
 const supabaseUrl = 'https://ivumtyhdkjurerknjnpt.supabase.co';
@@ -77,6 +77,7 @@ const SistemaGerenciamento = () => {
   const [servicos, setServicos] = useState([]);
   const [vendas, setVendas] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [devedores, setDevedores] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // Funções para buscar nomes pelos códigos
@@ -101,12 +102,18 @@ const SistemaGerenciamento = () => {
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showEditSaleModal, setShowEditSaleModal] = useState(false);
+  const [showDevedorModal, setShowDevedorModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
 
   // Estados para filtros de venda
-  const [filtroMes, setFiltroMes] = useState('mes-atual');
+  const [filtroMes, setFiltroMes] = useState('todos');
   const [filtroTipo, setFiltroTipo] = useState('todos');
-  const [dataInicio, setDataInicio] = useState('');
+  const [dataInicio, setDataInicio] = useState(() => {
+    // Definir o primeiro dia do mês atual como padrão
+    const hoje = new Date();
+    const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    return primeiroDiaDoMes.toISOString().split('T')[0];
+  });
   const [dataFim, setDataFim] = useState('');
 
   // Estados para importação/exportação
@@ -114,6 +121,9 @@ const SistemaGerenciamento = () => {
   const [importLog, setImportLog] = useState([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Estados para ordenação
+  const [ordenacaoEstoque, setOrdenacaoEstoque] = useState(''); // '', 'asc', 'desc'
 
   // Funções de Importação e Exportação CSV
   
@@ -184,13 +194,19 @@ const SistemaGerenciamento = () => {
           headers = ['codigo', 'data', 'cliente_codigo', 'produto_codigo', 'servico_codigo', 'quantidade', 'valor_total', 'custo_fixo', 'lucro', 'observacao'];
           filename = 'vendas.csv';
           break;
+        case 'devedores':
+          data = devedores;
+          headers = ['codigo', 'nome', 'data', 'valor', 'observacao'];
+          filename = 'devedores.csv';
+          break;
         case 'todos':
           // Exportar todos os dados em um arquivo ZIP seria ideal, mas vamos criar arquivos separados
           const dataCompleta = {
             clientes: clientes,
             produtos: produtos,
             servicos: servicos,
-            vendas: vendas
+            vendas: vendas,
+            devedores: devedores
           };
           
           const csvCompleto = Object.keys(dataCompleta).map(tabela => {
@@ -198,7 +214,8 @@ const SistemaGerenciamento = () => {
               clientes: ['codigo', 'nome', 'telefone', 'observacao', 'data_cadastro'],
               produtos: ['codigo', 'nome', 'valor', 'custo', 'estoque'],
               servicos: ['codigo', 'nome', 'preco_hora', 'preco_custo'],
-              vendas: ['codigo', 'data', 'cliente_codigo', 'produto_codigo', 'servico_codigo', 'quantidade', 'valor_total', 'custo_fixo', 'lucro', 'observacao']
+              vendas: ['codigo', 'data', 'cliente_codigo', 'produto_codigo', 'servico_codigo', 'quantidade', 'valor_total', 'custo_fixo', 'lucro', 'observacao'],
+              devedores: ['codigo', 'nome', 'data', 'valor', 'observacao']
             };
             
             return `[${tabela.toUpperCase()}]\n${arrayToCSV(dataCompleta[tabela], tabelaHeaders[tabela])}\n`;
@@ -285,7 +302,8 @@ const SistemaGerenciamento = () => {
       clientes: 'sistema_clientes',
       produtos: 'sistema_estoque',
       servicos: 'sistema_servicos',
-      vendas: 'sistema_vendas'
+      vendas: 'sistema_vendas',
+      devedores: 'sistema_devedores'
     };
     
     const tabela = tabelas[tipo];
@@ -341,6 +359,17 @@ const SistemaGerenciamento = () => {
     event.target.value = ''; // Limpar input
   };
 
+  // Função para alternar ordenação por estoque
+  const alternarOrdenacaoEstoque = () => {
+    if (ordenacaoEstoque === '') {
+      setOrdenacaoEstoque('asc');
+    } else if (ordenacaoEstoque === 'asc') {
+      setOrdenacaoEstoque('desc');
+    } else {
+      setOrdenacaoEstoque('');
+    }
+  };
+
   // Estados para formulários
   const [clientForm, setClientForm] = useState({
     codigo: '',
@@ -363,6 +392,14 @@ const SistemaGerenciamento = () => {
     nome: '',
     preco_hora: '',
     preco_custo: ''
+  });
+
+  const [devedorForm, setDevedorForm] = useState({
+    codigo: '',
+    nome: '',
+    data: new Date().toISOString().split('T')[0],
+    valor: '',
+    observacao: ''
   });
 
   // Estados para nova venda
@@ -406,7 +443,8 @@ const SistemaGerenciamento = () => {
         loadProdutos(),
         loadServicos(),
         loadVendas(),
-        loadClientes()
+        loadClientes(),
+        loadDevedores()
       ]);
     } catch (error) {
       addToast('Erro ao carregar dados', 'error');
@@ -438,6 +476,12 @@ const SistemaGerenciamento = () => {
     const { data, error } = await supabase.from('sistema_clientes').select('*').order('data_cadastro', { ascending: false });
     if (error) throw error;
     setClientes(data || []);
+  };
+
+  const loadDevedores = async () => {
+    const { data, error } = await supabase.from('sistema_devedores').select('*').order('data', { ascending: false });
+    if (error) throw error;
+    setDevedores(data || []);
   };
 
   // Funções para clientes
@@ -580,6 +624,77 @@ const SistemaGerenciamento = () => {
       } catch (error) {
         addToast('Erro ao excluir serviço: ' + error.message, 'error');
       }
+    }
+  };
+
+  // Funções para devedores
+  const handleSaveDevedor = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingItem) {
+        const { error } = await supabase
+          .from('sistema_devedores')
+          .update(devedorForm)
+          .eq('codigo', editingItem.codigo);
+        if (error) throw error;
+        addToast('Devedor atualizado com sucesso!');
+      } else {
+        const { error } = await supabase
+          .from('sistema_devedores')
+          .insert([devedorForm]);
+        if (error) throw error;
+        addToast('Devedor cadastrado com sucesso!');
+      }
+      
+      await loadDevedores();
+      setShowDevedorModal(false);
+      setEditingItem(null);
+      setDevedorForm({ codigo: '', nome: '', data: new Date().toISOString().split('T')[0], valor: '', observacao: '' });
+    } catch (error) {
+      addToast('Erro ao salvar devedor: ' + error.message, 'error');
+    }
+  };
+
+  const handleDeleteDevedor = async (codigo) => {
+    if (window.confirm('Tem certeza que deseja excluir este devedor?')) {
+      try {
+        const { error } = await supabase
+          .from('sistema_devedores')
+          .delete()
+          .eq('codigo', codigo);
+        if (error) throw error;
+        
+        await loadDevedores();
+        addToast('Devedor excluído com sucesso!');
+      } catch (error) {
+        addToast('Erro ao excluir devedor: ' + error.message, 'error');
+      }
+    }
+  };
+
+  // Função para gerar próximo código de devedor
+  const getNextDevedorCode = () => {
+    if (!devedores || devedores.length === 0) {
+      return 'DEV-0001';
+    }
+    
+    try {
+      const maxCode = devedores.reduce((max, devedor) => {
+        if (!devedor.codigo) return max;
+        
+        const match = devedor.codigo.match(/dev-(\d+)/i);
+        if (match) {
+          const num = parseInt(match[1]);
+          return num > max ? num : max;
+        }
+        return max;
+      }, 0);
+      
+      const nextNum = maxCode + 1;
+      return `DEV-${nextNum.toString().padStart(4, '0')}`;
+    } catch (error) {
+      console.error('Erro ao gerar código do devedor:', error);
+      return `DEV-${Date.now().toString().slice(-4)}`;
     }
   };
 
@@ -1002,11 +1117,20 @@ const SistemaGerenciamento = () => {
   }, [clientes, searchTerm]);
 
   const filteredProdutos = useMemo(() => {
-    return produtos.filter(produto =>
+    let produtosFiltrados = produtos.filter(produto =>
       produto.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       produto.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [produtos, searchTerm]);
+
+    // Aplicar ordenação por estoque
+    if (ordenacaoEstoque === 'asc') {
+      produtosFiltrados.sort((a, b) => parseInt(a.estoque || 0) - parseInt(b.estoque || 0));
+    } else if (ordenacaoEstoque === 'desc') {
+      produtosFiltrados.sort((a, b) => parseInt(b.estoque || 0) - parseInt(a.estoque || 0));
+    }
+
+    return produtosFiltrados;
+  }, [produtos, searchTerm, ordenacaoEstoque]);
 
   const filteredServicos = useMemo(() => {
     return servicos.filter(servico =>
@@ -1014,6 +1138,13 @@ const SistemaGerenciamento = () => {
       servico.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [servicos, searchTerm]);
+
+  const filteredDevedores = useMemo(() => {
+    return devedores.filter(devedor =>
+      devedor.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      devedor.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [devedores, searchTerm]);
 
   const filteredVendas = useMemo(() => {
     return vendas.filter(venda => {
@@ -1102,6 +1233,9 @@ const SistemaGerenciamento = () => {
     } else if (type === 'servico') {
       setServiceForm(item);
       setShowServiceModal(true);
+    } else if (type === 'devedor') {
+      setDevedorForm(item);
+      setShowDevedorModal(true);
     }
   };
 
@@ -1111,6 +1245,7 @@ const SistemaGerenciamento = () => {
     { id: 'produtos', name: 'Produtos', icon: Package },
     { id: 'servicos', name: 'Serviços', icon: Wrench },
     { id: 'vendas', name: 'Vendas', icon: TrendingUp },
+    { id: 'devedores', name: 'Devedores', icon: CreditCard },
     { id: 'importacao', name: 'Import/Export', icon: File },
   ];
 
@@ -1203,19 +1338,42 @@ const SistemaGerenciamento = () => {
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
               <div>
                 <h1 className="text-xl lg:text-2xl font-bold text-white">Produtos</h1>
-                <p className="text-gray-400 text-sm lg:text-base">Gerencie seu estoque de produtos</p>
+                <p className="text-gray-400 text-sm lg:text-base">
+                  Gerencie seu estoque de produtos
+                  {ordenacaoEstoque && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-xs text-blue-400">
+                      • Ordenado por estoque 
+                      {ordenacaoEstoque === 'asc' && <ChevronUp size={12} />}
+                      {ordenacaoEstoque === 'desc' && <ChevronDown size={12} />}
+                    </span>
+                  )}
+                </p>
               </div>
-              <button
-                onClick={() => {
-                  setEditingItem(null);
-                  setProductForm({ codigo: getNextProductCode(), nome: '', valor: '', estoque: '', custo: '' });
-                  setShowProductModal(true);
-                }}
-                className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg flex items-center justify-center gap-2 text-sm lg:text-base whitespace-nowrap"
-              >
-                <Plus size={16} className="lg:w-5 lg:h-5" />
-                Novo Produto
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Botão de ordenação mobile */}
+                <button
+                  onClick={alternarOrdenacaoEstoque}
+                  className="lg:hidden bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
+                  title={`Ordenar estoque: ${ordenacaoEstoque === 'asc' ? 'Crescente' : ordenacaoEstoque === 'desc' ? 'Decrescente' : 'Sem ordenação'}`}
+                >
+                  <Package size={16} />
+                  {ordenacaoEstoque === '' && <ArrowUpDown size={14} className="text-gray-400" />}
+                  {ordenacaoEstoque === 'asc' && <ChevronUp size={14} className="text-blue-400" />}
+                  {ordenacaoEstoque === 'desc' && <ChevronDown size={14} className="text-blue-400" />}
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setEditingItem(null);
+                    setProductForm({ codigo: getNextProductCode(), nome: '', valor: '', estoque: '', custo: '' });
+                    setShowProductModal(true);
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg flex items-center justify-center gap-2 text-sm lg:text-base whitespace-nowrap"
+                >
+                  <Plus size={16} className="lg:w-5 lg:h-5" />
+                  Novo Produto
+                </button>
+              </div>
             </div>
 
             <div className="bg-slate-800 rounded-lg overflow-hidden">
@@ -1227,7 +1385,18 @@ const SistemaGerenciamento = () => {
                       <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Nome</th>
                       <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell">Preço</th>
                       <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell">Custo</th>
-                      <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell">Estoque</th>
+                      <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell">
+                        <button
+                          onClick={alternarOrdenacaoEstoque}
+                          className="flex items-center gap-1 hover:text-white transition-colors group"
+                          title={`Ordenar estoque: ${ordenacaoEstoque === 'asc' ? 'Crescente' : ordenacaoEstoque === 'desc' ? 'Decrescente' : 'Sem ordenação'}`}
+                        >
+                          <span>Estoque</span>
+                          {ordenacaoEstoque === '' && <ArrowUpDown size={14} className="text-gray-400 group-hover:text-white" />}
+                          {ordenacaoEstoque === 'asc' && <ChevronUp size={14} className="text-blue-400" />}
+                          {ordenacaoEstoque === 'desc' && <ChevronDown size={14} className="text-blue-400" />}
+                        </button>
+                      </th>
                       <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
@@ -1238,12 +1407,25 @@ const SistemaGerenciamento = () => {
                         <td className="px-3 lg:px-6 py-4 text-xs lg:text-sm text-white font-medium">
                           <div>
                             <div className="font-medium">{produto.nome}</div>
-                            <div className="sm:hidden text-xs text-green-400">{formatCurrency(produto.valor)}</div>
+                            <div className="sm:hidden text-xs flex items-center gap-2">
+                              <span className="text-green-400">{formatCurrency(produto.valor)}</span>
+                              <span className={`text-xs font-medium ${parseInt(produto.estoque || 0) <= 5 ? 'text-red-400' : parseInt(produto.estoque || 0) <= 10 ? 'text-yellow-400' : 'text-gray-300'}`}>
+                                Est: {produto.estoque}
+                                {parseInt(produto.estoque || 0) <= 5 && <span className="ml-1">⚠️</span>}
+                              </span>
+                            </div>
                           </div>
                         </td>
                         <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-green-400 hidden sm:table-cell">{formatCurrency(produto.valor)}</td>
                         <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-red-400 hidden md:table-cell">{formatCurrency(produto.custo)}</td>
-                        <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-white hidden lg:table-cell">{produto.estoque}</td>
+                        <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm hidden lg:table-cell">
+                          <span className={`font-medium ${parseInt(produto.estoque || 0) <= 5 ? 'text-red-400' : parseInt(produto.estoque || 0) <= 10 ? 'text-yellow-400' : 'text-white'}`}>
+                            {produto.estoque}
+                            {parseInt(produto.estoque || 0) <= 5 && (
+                              <span className="ml-1 text-xs">⚠️</span>
+                            )}
+                          </span>
+                        </td>
                         <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-400">
                           <div className="flex space-x-1 lg:space-x-2">
                             <button
@@ -1479,13 +1661,16 @@ const SistemaGerenciamento = () => {
                   </div>
                 </div>
                 
-                {(dataInicio || dataFim || filtroMes !== 'mes-atual' || filtroTipo !== 'todos') && (
+                {(dataInicio || dataFim || filtroMes !== 'todos' || filtroTipo !== 'todos') && (
                   <div className="flex justify-center lg:justify-end pt-2">
                     <button
                       onClick={() => {
-                        setDataInicio('');
+                        // Resetar para o primeiro dia do mês atual
+                        const hoje = new Date();
+                        const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+                        setDataInicio(primeiroDiaDoMes.toISOString().split('T')[0]);
                         setDataFim('');
-                        setFiltroMes('mes-atual');
+                        setFiltroMes('todos');
                         setFiltroTipo('todos');
                       }}
                       className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-medium"
@@ -1662,6 +1847,130 @@ const SistemaGerenciamento = () => {
           </div>
         );
 
+      case 'devedores':
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+              <div>
+                <h1 className="text-xl lg:text-2xl font-bold text-white">Devedores</h1>
+                <p className="text-gray-400 text-sm lg:text-base">Gerencie os devedores cadastrados</p>
+                <div className="mt-2 p-3 bg-red-500/20 border border-red-500/50 rounded-lg">
+                  <div className="flex items-center text-red-400">
+                    <AlertTriangle size={16} className="mr-2" />
+                    <span className="text-sm font-medium">
+                      Total em Dívidas: {formatCurrency(devedores.reduce((sum, d) => sum + parseFloat(d.valor || 0), 0))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingItem(null);
+                  setDevedorForm({ 
+                    codigo: getNextDevedorCode(), 
+                    nome: '', 
+                    data: new Date().toISOString().split('T')[0], 
+                    valor: '', 
+                    observacao: '' 
+                  });
+                  setShowDevedorModal(true);
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg flex items-center justify-center gap-2 text-sm lg:text-base whitespace-nowrap"
+              >
+                <Plus size={16} className="lg:w-5 lg:h-5" />
+                Novo Devedor
+              </button>
+            </div>
+
+            <div className="bg-slate-800 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[600px]">
+                  <thead className="bg-slate-700">
+                    <tr>
+                      <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Código</th>
+                      <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Nome</th>
+                      <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell">Data</th>
+                      <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Valor</th>
+                      <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell">Observação</th>
+                      <th className="px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-slate-800 divide-y divide-slate-700">
+                    {filteredDevedores.map((devedor) => {
+                      const valor = parseFloat(devedor.valor || 0);
+                      const dataVencimento = new Date(devedor.data + 'T12:00:00');
+                      const hoje = new Date();
+                      const diasVencidos = Math.floor((hoje - dataVencimento) / (1000 * 60 * 60 * 24));
+                      const isVencido = diasVencidos > 0;
+                      
+                      return (
+                        <tr key={devedor.codigo} className={`hover:bg-slate-700 ${isVencido ? 'bg-red-500/10' : ''}`}>
+                          <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-blue-400">{devedor.codigo}</td>
+                          <td className="px-3 lg:px-6 py-4 text-xs lg:text-sm text-white font-medium">
+                            <div>
+                              <div className="font-medium">{devedor.nome}</div>
+                              <div className="sm:hidden text-xs flex items-center gap-2">
+                                <span className="text-gray-400">
+                                  {devedor.data ? new Date(devedor.data + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                                </span>
+                                {isVencido && (
+                                  <span className="text-red-400 text-xs">
+                                    {diasVencidos} dias em atraso
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-300 hidden sm:table-cell">
+                            <div>
+                              <div>{devedor.data ? new Date(devedor.data + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</div>
+                              {isVencido && (
+                                <div className="text-red-400 text-xs">
+                                  {diasVencidos} dias em atraso
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm font-semibold">
+                            <span className={valor >= 1000 ? 'text-red-400' : valor >= 500 ? 'text-yellow-400' : 'text-orange-400'}>
+                              {formatCurrency(valor)}
+                            </span>
+                          </td>
+                          <td className="px-3 lg:px-6 py-4 text-xs lg:text-sm text-gray-400 max-w-xs truncate hidden lg:table-cell">
+                            {devedor.observacao || '-'}
+                          </td>
+                          <td className="px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-400">
+                            <div className="flex space-x-1 lg:space-x-2">
+                              <button
+                                onClick={() => handleEdit(devedor, 'devedor')}
+                                className="text-blue-400 hover:text-blue-300 p-1"
+                              >
+                                <Edit size={14} className="lg:w-4 lg:h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDevedor(devedor.codigo)}
+                                className="text-red-400 hover:text-red-300 p-1"
+                              >
+                                <Trash2 size={14} className="lg:w-4 lg:h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {filteredDevedores.length === 0 && (
+                <div className="text-center py-8 text-gray-400">
+                  <div className="text-lg mb-2">💳</div>
+                  <div className="text-sm">Nenhum devedor encontrado</div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
       case 'importacao':
         return (
           <div className="space-y-6">
@@ -1717,6 +2026,15 @@ const SistemaGerenciamento = () => {
                   >
                     <TrendingUp size={16} />
                     Exportar Vendas ({vendas.length})
+                  </button>
+                  
+                  <button
+                    onClick={() => exportarCSV('devedores')}
+                    disabled={isExporting || devedores.length === 0}
+                    className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <CreditCard size={16} />
+                    Exportar Devedores ({devedores.length})
                   </button>
                   
                   <div className="border-t border-slate-600 pt-3">
@@ -1782,6 +2100,17 @@ const SistemaGerenciamento = () => {
                       onChange={(e) => handleFileUpload(e, 'vendas')}
                       disabled={isImporting}
                       className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:cursor-pointer hover:file:bg-emerald-700"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Importar Devedores</label>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => handleFileUpload(e, 'devedores')}
+                      disabled={isImporting}
+                      className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-red-600 file:text-white file:cursor-pointer hover:file:bg-red-700"
                     />
                   </div>
                   
@@ -1877,7 +2206,8 @@ const SistemaGerenciamento = () => {
                     </div>
                     <div>
                       <strong>Serviços:</strong> codigo, nome, preco_hora, preco_custo<br/>
-                      <strong>Vendas:</strong> codigo, data, cliente_codigo, produto_codigo, servico_codigo, quantidade, valor_total, custo_fixo, lucro, observacao
+                      <strong>Vendas:</strong> codigo, data, cliente_codigo, produto_codigo, servico_codigo, quantidade, valor_total, custo_fixo, lucro, observacao<br/>
+                      <strong>Devedores:</strong> codigo, nome, data, valor, observacao
                     </div>
                   </div>
                 </div>
@@ -1891,7 +2221,7 @@ const SistemaGerenciamento = () => {
                 Estatísticas do Sistema
               </h3>
               
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-400">{clientes.length}</div>
                   <div className="text-sm text-gray-300">Clientes</div>
@@ -1911,11 +2241,16 @@ const SistemaGerenciamento = () => {
                   <div className="text-2xl font-bold text-emerald-400">{vendas.length}</div>
                   <div className="text-sm text-gray-300">Vendas</div>
                 </div>
+                
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-400">{devedores.length}</div>
+                  <div className="text-sm text-gray-300">Devedores</div>
+                </div>
               </div>
               
               <div className="mt-4 pt-4 border-t border-slate-600 text-center">
                 <div className="text-lg font-bold text-green-400">
-                  {clientes.length + produtos.length + servicos.length + vendas.length}
+                  {clientes.length + produtos.length + servicos.length + vendas.length + devedores.length}
                 </div>
                 <div className="text-sm text-gray-300">Total de Registros</div>
               </div>
@@ -2838,6 +3173,113 @@ const SistemaGerenciamento = () => {
               </div>
             </div>
           )}
+        </form>
+      </Modal>
+
+      {/* Modal de Devedor */}
+      <Modal
+        isOpen={showDevedorModal}
+        onClose={() => setShowDevedorModal(false)}
+        title={editingItem ? 'Editar Devedor' : 'Novo Devedor'}
+      >
+        <form onSubmit={handleSaveDevedor} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Código</label>
+            <input
+              type="text"
+              value={devedorForm.codigo}
+              onChange={(e) => setDevedorForm({ ...devedorForm, codigo: e.target.value })}
+              className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none"
+              placeholder="Ex: DEV-001"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Nome do Devedor</label>
+            <input
+              type="text"
+              value={devedorForm.nome}
+              onChange={(e) => setDevedorForm({ ...devedorForm, nome: e.target.value })}
+              className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none"
+              placeholder="Nome completo do devedor"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Data de Vencimento</label>
+              <input
+                type="date"
+                value={devedorForm.data}
+                onChange={(e) => setDevedorForm({ ...devedorForm, data: e.target.value })}
+                className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Valor da Dívida</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={devedorForm.valor}
+                onChange={(e) => setDevedorForm({ ...devedorForm, valor: e.target.value })}
+                className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none"
+                placeholder="0,00"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Observação</label>
+            <textarea
+              value={devedorForm.observacao}
+              onChange={(e) => setDevedorForm({ ...devedorForm, observacao: e.target.value })}
+              rows="3"
+              className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none"
+              placeholder="Detalhes sobre a dívida, motivo, acordo de pagamento..."
+            />
+          </div>
+          
+          {/* Alerta sobre valor */}
+          {parseFloat(devedorForm.valor || 0) >= 1000 && (
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+              <div className="flex items-center text-red-400">
+                <AlertTriangle size={16} className="mr-2" />
+                <span className="text-sm font-medium">
+                  ⚠️ Valor elevado: {formatCurrency(parseFloat(devedorForm.valor || 0))}
+                </span>
+              </div>
+            </div>
+          )}
+          
+          {/* Alerta sobre vencimento */}
+          {devedorForm.data && new Date(devedorForm.data + 'T12:00:00') < new Date() && (
+            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3">
+              <div className="flex items-center text-yellow-400">
+                <AlertTriangle size={16} className="mr-2" />
+                <span className="text-sm font-medium">
+                  📅 Data de vencimento já passou
+                </span>
+              </div>
+            </div>
+          )}
+          
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-4">
+            <button
+              type="submit"
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-medium"
+            >
+              {editingItem ? 'Atualizar' : 'Cadastrar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDevedorModal(false)}
+              className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg"
+            >
+              Cancelar
+            </button>
+          </div>
         </form>
       </Modal>
     </div>
