@@ -158,7 +158,7 @@
               componentCode = `// <stdin>
 import React, { useState, useEffect, useMemo } from "https://esm.sh/react@18.2.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js?deps=react@18.2.0,react-dom@18.2.0";
-import { Search, Plus, Edit, Trash2, ShoppingCart, User, Package, Wrench, TrendingUp, X, Check, AlertTriangle, Menu, Calculator, File, Upload, Download, FileText, Database } from "https://esm.sh/lucide-react?deps=react@18.2.0,react-dom@18.2.0";
+import { Search, Plus, Edit, Trash2, ShoppingCart, User, Package, Wrench, TrendingUp, X, Check, AlertTriangle, Menu, Calculator, File, Upload, Download, FileText, Database, ChevronUp, ChevronDown, ArrowUpDown, CreditCard } from "https://esm.sh/lucide-react?deps=react@18.2.0,react-dom@18.2.0";
 var supabaseUrl = "https://ivumtyhdkjurerknjnpt.supabase.co";
 var supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2dW10eWhka2p1cmVya25qbnB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAzNjUyMjMsImV4cCI6MjA2NTk0MTIyM30.rbkqMbSYczGbJdGSjUvARGLIU3Gf-B9q0RWm0vW99Bs";
 var supabase = createClient(supabaseUrl, supabaseKey);
@@ -198,6 +198,7 @@ var SistemaGerenciamento = () => {
   const [servicos, setServicos] = useState([]);
   const [vendas, setVendas] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [devedores, setDevedores] = useState([]);
   const [loading, setLoading] = useState(false);
   const getClienteName = (codigo) => {
     const cliente = clientes.find((c) => c.codigo === codigo);
@@ -216,15 +217,21 @@ var SistemaGerenciamento = () => {
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showEditSaleModal, setShowEditSaleModal] = useState(false);
+  const [showDevedorModal, setShowDevedorModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [filtroMes, setFiltroMes] = useState("mes-atual");
+  const [filtroMes, setFiltroMes] = useState("todos");
   const [filtroTipo, setFiltroTipo] = useState("todos");
-  const [dataInicio, setDataInicio] = useState("");
+  const [dataInicio, setDataInicio] = useState(() => {
+    const hoje = /* @__PURE__ */ new Date();
+    const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    return primeiroDiaDoMes.toISOString().split("T")[0];
+  });
   const [dataFim, setDataFim] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [importLog, setImportLog] = useState([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [ordenacaoEstoque, setOrdenacaoEstoque] = useState("");
   const arrayToCSV = (data, headers) => {
     if (!data || data.length === 0) return "";
     const csvHeaders = headers.join(",");
@@ -280,19 +287,26 @@ var SistemaGerenciamento = () => {
           headers = ["codigo", "data", "cliente_codigo", "produto_codigo", "servico_codigo", "quantidade", "valor_total", "custo_fixo", "lucro", "observacao"];
           filename = "vendas.csv";
           break;
+        case "devedores":
+          data = devedores;
+          headers = ["codigo", "nome", "data", "valor", "observacao"];
+          filename = "devedores.csv";
+          break;
         case "todos":
           const dataCompleta = {
             clientes,
             produtos,
             servicos,
-            vendas
+            vendas,
+            devedores
           };
           const csvCompleto = Object.keys(dataCompleta).map((tabela) => {
             const tabelaHeaders = {
               clientes: ["codigo", "nome", "telefone", "observacao", "data_cadastro"],
               produtos: ["codigo", "nome", "valor", "custo", "estoque"],
               servicos: ["codigo", "nome", "preco_hora", "preco_custo"],
-              vendas: ["codigo", "data", "cliente_codigo", "produto_codigo", "servico_codigo", "quantidade", "valor_total", "custo_fixo", "lucro", "observacao"]
+              vendas: ["codigo", "data", "cliente_codigo", "produto_codigo", "servico_codigo", "quantidade", "valor_total", "custo_fixo", "lucro", "observacao"],
+              devedores: ["codigo", "nome", "data", "valor", "observacao"]
             };
             return \`[\${tabela.toUpperCase()}]
 \${arrayToCSV(dataCompleta[tabela], tabelaHeaders[tabela])}
@@ -362,7 +376,8 @@ var SistemaGerenciamento = () => {
       clientes: "sistema_clientes",
       produtos: "sistema_estoque",
       servicos: "sistema_servicos",
-      vendas: "sistema_vendas"
+      vendas: "sistema_vendas",
+      devedores: "sistema_devedores"
     };
     const tabela = tabelas[tipo];
     if (!tabela || !data || data.length === 0) {
@@ -404,6 +419,15 @@ var SistemaGerenciamento = () => {
     importarCSV(file, tipo);
     event.target.value = "";
   };
+  const alternarOrdenacaoEstoque = () => {
+    if (ordenacaoEstoque === "") {
+      setOrdenacaoEstoque("asc");
+    } else if (ordenacaoEstoque === "asc") {
+      setOrdenacaoEstoque("desc");
+    } else {
+      setOrdenacaoEstoque("");
+    }
+  };
   const [clientForm, setClientForm] = useState({
     codigo: "",
     nome: "",
@@ -423,6 +447,13 @@ var SistemaGerenciamento = () => {
     nome: "",
     preco_hora: "",
     preco_custo: ""
+  });
+  const [devedorForm, setDevedorForm] = useState({
+    codigo: "",
+    nome: "",
+    data: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+    valor: "",
+    observacao: ""
   });
   const [novaVenda, setNovaVenda] = useState({
     cliente: null,
@@ -457,7 +488,8 @@ var SistemaGerenciamento = () => {
         loadProdutos(),
         loadServicos(),
         loadVendas(),
-        loadClientes()
+        loadClientes(),
+        loadDevedores()
       ]);
     } catch (error) {
       addToast("Erro ao carregar dados", "error");
@@ -483,6 +515,11 @@ var SistemaGerenciamento = () => {
     const { data, error } = await supabase.from("sistema_clientes").select("*").order("data_cadastro", { ascending: false });
     if (error) throw error;
     setClientes(data || []);
+  };
+  const loadDevedores = async () => {
+    const { data, error } = await supabase.from("sistema_devedores").select("*").order("data", { ascending: false });
+    if (error) throw error;
+    setDevedores(data || []);
   };
   const handleSaveClient = async (e) => {
     e.preventDefault();
@@ -585,6 +622,59 @@ var SistemaGerenciamento = () => {
       } catch (error) {
         addToast("Erro ao excluir servi\\xE7o: " + error.message, "error");
       }
+    }
+  };
+  const handleSaveDevedor = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingItem) {
+        const { error } = await supabase.from("sistema_devedores").update(devedorForm).eq("codigo", editingItem.codigo);
+        if (error) throw error;
+        addToast("Devedor atualizado com sucesso!");
+      } else {
+        const { error } = await supabase.from("sistema_devedores").insert([devedorForm]);
+        if (error) throw error;
+        addToast("Devedor cadastrado com sucesso!");
+      }
+      await loadDevedores();
+      setShowDevedorModal(false);
+      setEditingItem(null);
+      setDevedorForm({ codigo: "", nome: "", data: (/* @__PURE__ */ new Date()).toISOString().split("T")[0], valor: "", observacao: "" });
+    } catch (error) {
+      addToast("Erro ao salvar devedor: " + error.message, "error");
+    }
+  };
+  const handleDeleteDevedor = async (codigo) => {
+    if (window.confirm("Tem certeza que deseja excluir este devedor?")) {
+      try {
+        const { error } = await supabase.from("sistema_devedores").delete().eq("codigo", codigo);
+        if (error) throw error;
+        await loadDevedores();
+        addToast("Devedor exclu\\xEDdo com sucesso!");
+      } catch (error) {
+        addToast("Erro ao excluir devedor: " + error.message, "error");
+      }
+    }
+  };
+  const getNextDevedorCode = () => {
+    if (!devedores || devedores.length === 0) {
+      return "DEV-0001";
+    }
+    try {
+      const maxCode = devedores.reduce((max, devedor) => {
+        if (!devedor.codigo) return max;
+        const match = devedor.codigo.match(/dev-(\\d+)/i);
+        if (match) {
+          const num = parseInt(match[1]);
+          return num > max ? num : max;
+        }
+        return max;
+      }, 0);
+      const nextNum = maxCode + 1;
+      return \`DEV-\${nextNum.toString().padStart(4, "0")}\`;
+    } catch (error) {
+      console.error("Erro ao gerar c\\xF3digo do devedor:", error);
+      return \`DEV-\${Date.now().toString().slice(-4)}\`;
     }
   };
   const getNextSaleCode = () => {
@@ -902,15 +992,26 @@ var SistemaGerenciamento = () => {
     );
   }, [clientes, searchTerm]);
   const filteredProdutos = useMemo(() => {
-    return produtos.filter(
+    let produtosFiltrados = produtos.filter(
       (produto) => produto.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || produto.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [produtos, searchTerm]);
+    if (ordenacaoEstoque === "asc") {
+      produtosFiltrados.sort((a, b) => parseInt(a.estoque || 0) - parseInt(b.estoque || 0));
+    } else if (ordenacaoEstoque === "desc") {
+      produtosFiltrados.sort((a, b) => parseInt(b.estoque || 0) - parseInt(a.estoque || 0));
+    }
+    return produtosFiltrados;
+  }, [produtos, searchTerm, ordenacaoEstoque]);
   const filteredServicos = useMemo(() => {
     return servicos.filter(
       (servico) => servico.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || servico.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [servicos, searchTerm]);
+  const filteredDevedores = useMemo(() => {
+    return devedores.filter(
+      (devedor) => devedor.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || devedor.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [devedores, searchTerm]);
   const filteredVendas = useMemo(() => {
     return vendas.filter((venda) => {
       const clienteNome = getClienteName(venda.cliente_codigo);
@@ -980,6 +1081,9 @@ var SistemaGerenciamento = () => {
     } else if (type === "servico") {
       setServiceForm(item);
       setShowServiceModal(true);
+    } else if (type === "devedor") {
+      setDevedorForm(item);
+      setShowDevedorModal(true);
     }
   };
   const menuItems = [
@@ -987,6 +1091,7 @@ var SistemaGerenciamento = () => {
     { id: "produtos", name: "Produtos", icon: Package },
     { id: "servicos", name: "Servi\\xE7os", icon: Wrench },
     { id: "vendas", name: "Vendas", icon: TrendingUp },
+    { id: "devedores", name: "Devedores", icon: CreditCard },
     { id: "importacao", name: "Import/Export", icon: File }
   ];
   const renderPage = () => {
@@ -1026,7 +1131,18 @@ var SistemaGerenciamento = () => {
           /* @__PURE__ */ React.createElement(Trash2, { size: 14, className: "lg:w-4 lg:h-4" })
         ))))))))));
       case "produtos":
-        return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Produtos"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Gerencie seu estoque de produtos")), /* @__PURE__ */ React.createElement(
+        return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Produtos"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Gerencie seu estoque de produtos", ordenacaoEstoque && /* @__PURE__ */ React.createElement("span", { className: "ml-2 inline-flex items-center gap-1 text-xs text-blue-400" }, "\\u2022 Ordenado por estoque", ordenacaoEstoque === "asc" && /* @__PURE__ */ React.createElement(ChevronUp, { size: 12 }), ordenacaoEstoque === "desc" && /* @__PURE__ */ React.createElement(ChevronDown, { size: 12 })))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: alternarOrdenacaoEstoque,
+            className: "lg:hidden bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm",
+            title: \`Ordenar estoque: \${ordenacaoEstoque === "asc" ? "Crescente" : ordenacaoEstoque === "desc" ? "Decrescente" : "Sem ordena\\xE7\\xE3o"}\`
+          },
+          /* @__PURE__ */ React.createElement(Package, { size: 16 }),
+          ordenacaoEstoque === "" && /* @__PURE__ */ React.createElement(ArrowUpDown, { size: 14, className: "text-gray-400" }),
+          ordenacaoEstoque === "asc" && /* @__PURE__ */ React.createElement(ChevronUp, { size: 14, className: "text-blue-400" }),
+          ordenacaoEstoque === "desc" && /* @__PURE__ */ React.createElement(ChevronDown, { size: 14, className: "text-blue-400" })
+        ), /* @__PURE__ */ React.createElement(
           "button",
           {
             onClick: () => {
@@ -1038,7 +1154,18 @@ var SistemaGerenciamento = () => {
           },
           /* @__PURE__ */ React.createElement(Plus, { size: 16, className: "lg:w-5 lg:h-5" }),
           "Novo Produto"
-        )), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 rounded-lg overflow-hidden" }, /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full min-w-[600px]" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-slate-700" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "Nome"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell" }, "Pre\\xE7o"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell" }, "Custo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell" }, "Estoque"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "A\\xE7\\xF5es"))), /* @__PURE__ */ React.createElement("tbody", { className: "bg-slate-800 divide-y divide-slate-700" }, filteredProdutos.map((produto) => /* @__PURE__ */ React.createElement("tr", { key: produto.codigo, className: "hover:bg-slate-700" }, /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-blue-400" }, produto.codigo), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 text-xs lg:text-sm text-white font-medium" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, produto.nome), /* @__PURE__ */ React.createElement("div", { className: "sm:hidden text-xs text-green-400" }, formatCurrency(produto.valor)))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-green-400 hidden sm:table-cell" }, formatCurrency(produto.valor)), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-red-400 hidden md:table-cell" }, formatCurrency(produto.custo)), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-white hidden lg:table-cell" }, produto.estoque), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "flex space-x-1 lg:space-x-2" }, /* @__PURE__ */ React.createElement(
+        ))), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 rounded-lg overflow-hidden" }, /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full min-w-[600px]" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-slate-700" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "Nome"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell" }, "Pre\\xE7o"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell" }, "Custo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell" }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: alternarOrdenacaoEstoque,
+            className: "flex items-center gap-1 hover:text-white transition-colors group",
+            title: \`Ordenar estoque: \${ordenacaoEstoque === "asc" ? "Crescente" : ordenacaoEstoque === "desc" ? "Decrescente" : "Sem ordena\\xE7\\xE3o"}\`
+          },
+          /* @__PURE__ */ React.createElement("span", null, "Estoque"),
+          ordenacaoEstoque === "" && /* @__PURE__ */ React.createElement(ArrowUpDown, { size: 14, className: "text-gray-400 group-hover:text-white" }),
+          ordenacaoEstoque === "asc" && /* @__PURE__ */ React.createElement(ChevronUp, { size: 14, className: "text-blue-400" }),
+          ordenacaoEstoque === "desc" && /* @__PURE__ */ React.createElement(ChevronDown, { size: 14, className: "text-blue-400" })
+        )), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "A\\xE7\\xF5es"))), /* @__PURE__ */ React.createElement("tbody", { className: "bg-slate-800 divide-y divide-slate-700" }, filteredProdutos.map((produto) => /* @__PURE__ */ React.createElement("tr", { key: produto.codigo, className: "hover:bg-slate-700" }, /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-blue-400" }, produto.codigo), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 text-xs lg:text-sm text-white font-medium" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, produto.nome), /* @__PURE__ */ React.createElement("div", { className: "sm:hidden text-xs flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-green-400" }, formatCurrency(produto.valor)), /* @__PURE__ */ React.createElement("span", { className: \`text-xs font-medium \${parseInt(produto.estoque || 0) <= 5 ? "text-red-400" : parseInt(produto.estoque || 0) <= 10 ? "text-yellow-400" : "text-gray-300"}\` }, "Est: ", produto.estoque, parseInt(produto.estoque || 0) <= 5 && /* @__PURE__ */ React.createElement("span", { className: "ml-1" }, "\\u26A0\\uFE0F"))))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-green-400 hidden sm:table-cell" }, formatCurrency(produto.valor)), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-red-400 hidden md:table-cell" }, formatCurrency(produto.custo)), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm hidden lg:table-cell" }, /* @__PURE__ */ React.createElement("span", { className: \`font-medium \${parseInt(produto.estoque || 0) <= 5 ? "text-red-400" : parseInt(produto.estoque || 0) <= 10 ? "text-yellow-400" : "text-white"}\` }, produto.estoque, parseInt(produto.estoque || 0) <= 5 && /* @__PURE__ */ React.createElement("span", { className: "ml-1 text-xs" }, "\\u26A0\\uFE0F"))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "flex space-x-1 lg:space-x-2" }, /* @__PURE__ */ React.createElement(
           "button",
           {
             onClick: () => handleEdit(produto, "produto"),
@@ -1153,13 +1280,15 @@ var SistemaGerenciamento = () => {
           /* @__PURE__ */ React.createElement("option", { value: "todos" }, "Todos"),
           /* @__PURE__ */ React.createElement("option", { value: "produtos" }, "Produtos"),
           /* @__PURE__ */ React.createElement("option", { value: "servicos" }, "Servi\\xE7os")
-        ))), (dataInicio || dataFim || filtroMes !== "mes-atual" || filtroTipo !== "todos") && /* @__PURE__ */ React.createElement("div", { className: "flex justify-center lg:justify-end pt-2" }, /* @__PURE__ */ React.createElement(
+        ))), (dataInicio || dataFim || filtroMes !== "todos" || filtroTipo !== "todos") && /* @__PURE__ */ React.createElement("div", { className: "flex justify-center lg:justify-end pt-2" }, /* @__PURE__ */ React.createElement(
           "button",
           {
             onClick: () => {
-              setDataInicio("");
+              const hoje = /* @__PURE__ */ new Date();
+              const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+              setDataInicio(primeiroDiaDoMes.toISOString().split("T")[0]);
               setDataFim("");
-              setFiltroMes("mes-atual");
+              setFiltroMes("todos");
               setFiltroTipo("todos");
             },
             className: "bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-medium"
@@ -1198,6 +1327,47 @@ var SistemaGerenciamento = () => {
           },
           /* @__PURE__ */ React.createElement(Trash2, { size: 16 })
         ))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Cliente"), /* @__PURE__ */ React.createElement("div", { className: "text-sm font-medium text-white" }, getClienteName(venda.cliente_codigo))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Item"), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-white" }, venda.produto_codigo && /* @__PURE__ */ React.createElement("div", { className: "text-blue-400" }, venda.quantidade || 1, "x ", getProdutoName(venda.produto_codigo)), venda.servico_codigo && /* @__PURE__ */ React.createElement("div", { className: "text-purple-400" }, venda.quantidade || 1, "x ", getServicoName(venda.servico_codigo)))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Total"), /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-green-400" }, formatCurrency(venda.valor_total))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Lucro"), /* @__PURE__ */ React.createElement("div", { className: "text-sm font-semibold text-emerald-400" }, formatCurrency(venda.lucro)))), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-xs text-gray-400 uppercase tracking-wider" }, "Custo"), /* @__PURE__ */ React.createElement("div", { className: "text-sm font-medium text-red-400" }, formatCurrency(venda.custo_fixo))))), filteredVendas.length === 0 && /* @__PURE__ */ React.createElement("div", { className: "text-center py-8 text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "text-lg mb-2" }, "\\u{1F4CB}"), /* @__PURE__ */ React.createElement("div", { className: "text-sm" }, "Nenhuma venda encontrada"))))));
+      case "devedores":
+        return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Devedores"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Gerencie os devedores cadastrados"), /* @__PURE__ */ React.createElement("div", { className: "mt-2 p-3 bg-red-500/20 border border-red-500/50 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center text-red-400" }, /* @__PURE__ */ React.createElement(AlertTriangle, { size: 16, className: "mr-2" }), /* @__PURE__ */ React.createElement("span", { className: "text-sm font-medium" }, "Total em D\\xEDvidas: ", formatCurrency(devedores.reduce((sum, d) => sum + parseFloat(d.valor || 0), 0)))))), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              setEditingItem(null);
+              setDevedorForm({
+                codigo: getNextDevedorCode(),
+                nome: "",
+                data: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+                valor: "",
+                observacao: ""
+              });
+              setShowDevedorModal(true);
+            },
+            className: "bg-red-600 hover:bg-red-700 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg flex items-center justify-center gap-2 text-sm lg:text-base whitespace-nowrap"
+          },
+          /* @__PURE__ */ React.createElement(Plus, { size: 16, className: "lg:w-5 lg:h-5" }),
+          "Novo Devedor"
+        )), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 rounded-lg overflow-hidden" }, /* @__PURE__ */ React.createElement("div", { className: "overflow-x-auto" }, /* @__PURE__ */ React.createElement("table", { className: "w-full min-w-[600px]" }, /* @__PURE__ */ React.createElement("thead", { className: "bg-slate-700" }, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "Nome"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell" }, "Data"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "Valor"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell" }, "Observa\\xE7\\xE3o"), /* @__PURE__ */ React.createElement("th", { className: "px-3 lg:px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" }, "A\\xE7\\xF5es"))), /* @__PURE__ */ React.createElement("tbody", { className: "bg-slate-800 divide-y divide-slate-700" }, filteredDevedores.map((devedor) => {
+          const valor = parseFloat(devedor.valor || 0);
+          const dataVencimento = /* @__PURE__ */ new Date(devedor.data + "T12:00:00");
+          const hoje = /* @__PURE__ */ new Date();
+          const diasVencidos = Math.floor((hoje - dataVencimento) / (1e3 * 60 * 60 * 24));
+          const isVencido = diasVencidos > 0;
+          return /* @__PURE__ */ React.createElement("tr", { key: devedor.codigo, className: \`hover:bg-slate-700 \${isVencido ? "bg-red-500/10" : ""}\` }, /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-blue-400" }, devedor.codigo), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 text-xs lg:text-sm text-white font-medium" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "font-medium" }, devedor.nome), /* @__PURE__ */ React.createElement("div", { className: "sm:hidden text-xs flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-gray-400" }, devedor.data ? (/* @__PURE__ */ new Date(devedor.data + "T12:00:00")).toLocaleDateString("pt-BR") : "-"), isVencido && /* @__PURE__ */ React.createElement("span", { className: "text-red-400 text-xs" }, diasVencidos, " dias em atraso")))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-300 hidden sm:table-cell" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", null, devedor.data ? (/* @__PURE__ */ new Date(devedor.data + "T12:00:00")).toLocaleDateString("pt-BR") : "-"), isVencido && /* @__PURE__ */ React.createElement("div", { className: "text-red-400 text-xs" }, diasVencidos, " dias em atraso"))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm font-semibold" }, /* @__PURE__ */ React.createElement("span", { className: valor >= 1e3 ? "text-red-400" : valor >= 500 ? "text-yellow-400" : "text-orange-400" }, formatCurrency(valor))), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 text-xs lg:text-sm text-gray-400 max-w-xs truncate hidden lg:table-cell" }, devedor.observacao || "-"), /* @__PURE__ */ React.createElement("td", { className: "px-3 lg:px-6 py-4 whitespace-nowrap text-xs lg:text-sm text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "flex space-x-1 lg:space-x-2" }, /* @__PURE__ */ React.createElement(
+            "button",
+            {
+              onClick: () => handleEdit(devedor, "devedor"),
+              className: "text-blue-400 hover:text-blue-300 p-1"
+            },
+            /* @__PURE__ */ React.createElement(Edit, { size: 14, className: "lg:w-4 lg:h-4" })
+          ), /* @__PURE__ */ React.createElement(
+            "button",
+            {
+              onClick: () => handleDeleteDevedor(devedor.codigo),
+              className: "text-red-400 hover:text-red-300 p-1"
+            },
+            /* @__PURE__ */ React.createElement(Trash2, { size: 14, className: "lg:w-4 lg:h-4" })
+          ))));
+        })))), filteredDevedores.length === 0 && /* @__PURE__ */ React.createElement("div", { className: "text-center py-8 text-gray-400" }, /* @__PURE__ */ React.createElement("div", { className: "text-lg mb-2" }, "\\u{1F4B3}"), /* @__PURE__ */ React.createElement("div", { className: "text-sm" }, "Nenhum devedor encontrado"))));
       case "importacao":
         return /* @__PURE__ */ React.createElement("div", { className: "space-y-6" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "text-xl lg:text-2xl font-bold text-white" }, "Importa\\xE7\\xE3o e Exporta\\xE7\\xE3o"), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 text-sm lg:text-base" }, "Fa\\xE7a backup e restaure seus dados"))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-6" }, /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-6 rounded-lg border border-green-500/30" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-4" }, /* @__PURE__ */ React.createElement(Download, { className: "h-6 w-6 text-green-400 mr-3" }), /* @__PURE__ */ React.createElement("h2", { className: "text-xl font-semibold text-white" }, "Exportar Dados")), /* @__PURE__ */ React.createElement("p", { className: "text-gray-400 mb-6" }, "Baixe seus dados em formato CSV para backup ou migra\\xE7\\xE3o"), /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, /* @__PURE__ */ React.createElement(
           "button",
@@ -1242,6 +1412,17 @@ var SistemaGerenciamento = () => {
           /* @__PURE__ */ React.createElement(TrendingUp, { size: 16 }),
           "Exportar Vendas (",
           vendas.length,
+          ")"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => exportarCSV("devedores"),
+            disabled: isExporting || devedores.length === 0,
+            className: "w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          },
+          /* @__PURE__ */ React.createElement(CreditCard, { size: 16 }),
+          "Exportar Devedores (",
+          devedores.length,
           ")"
         ), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-3" }, /* @__PURE__ */ React.createElement(
           "button",
@@ -1288,6 +1469,15 @@ var SistemaGerenciamento = () => {
             disabled: isImporting,
             className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:cursor-pointer hover:file:bg-emerald-700"
           }
+        )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Importar Devedores"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            type: "file",
+            accept: ".csv",
+            onChange: (e) => handleFileUpload(e, "devedores"),
+            disabled: isImporting,
+            className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-red-600 file:text-white file:cursor-pointer hover:file:bg-red-700"
+          }
         )), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-3" }, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-2" }, "Restaurar Backup Completo"), /* @__PURE__ */ React.createElement(
           "input",
           {
@@ -1311,7 +1501,7 @@ var SistemaGerenciamento = () => {
             className: "mt-4 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm"
           },
           "Limpar Log"
-        )), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-4" }, /* @__PURE__ */ React.createElement(AlertTriangle, { className: "h-5 w-5 text-yellow-400 mr-3" }), /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white" }, "Informa\\xE7\\xF5es Importantes")), /* @__PURE__ */ React.createElement("div", { className: "space-y-4 text-gray-300 text-sm" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Exporta\\xE7\\xE3o:"), /* @__PURE__ */ React.createElement("ul", { className: "space-y-1 text-xs" }, /* @__PURE__ */ React.createElement("li", null, "\\u2022 Os arquivos s\\xE3o gerados em formato CSV padr\\xE3o"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 O backup completo inclui todas as tabelas"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Dados s\\xE3o exportados com codifica\\xE7\\xE3o UTF-8"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Campos vazios s\\xE3o representados como valores nulos"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Importa\\xE7\\xE3o:"), /* @__PURE__ */ React.createElement("ul", { className: "space-y-1 text-xs" }, /* @__PURE__ */ React.createElement("li", null, "\\u2022 Aceita apenas arquivos CSV"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Dados duplicados s\\xE3o atualizados (baseado no c\\xF3digo)"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Valida\\xE7\\xE3o autom\\xE1tica de tipos de dados"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Process em lotes para melhor performance")))), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-4" }, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Formato dos Arquivos CSV:"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("strong", null, "Clientes:"), " codigo, nome, telefone, observacao, data_cadastro", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("strong", null, "Produtos:"), " codigo, nome, valor, custo, estoque"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("strong", null, "Servi\\xE7os:"), " codigo, nome, preco_hora, preco_custo", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("strong", null, "Vendas:"), " codigo, data, cliente_codigo, produto_codigo, servico_codigo, quantidade, valor_total, custo_fixo, lucro, observacao"))))), /* @__PURE__ */ React.createElement("div", { className: "bg-gradient-to-r from-slate-800 to-slate-700 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4 flex items-center" }, /* @__PURE__ */ React.createElement(Database, { className: "mr-3", size: 20 }), "Estat\\xEDsticas do Sistema"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 lg:grid-cols-4 gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-blue-400" }, clientes.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Clientes")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-purple-400" }, produtos.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Produtos")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-orange-400" }, servicos.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Servi\\xE7os")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-emerald-400" }, vendas.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Vendas"))), /* @__PURE__ */ React.createElement("div", { className: "mt-4 pt-4 border-t border-slate-600 text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-lg font-bold text-green-400" }, clientes.length + produtos.length + servicos.length + vendas.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Total de Registros"))));
+        )), /* @__PURE__ */ React.createElement("div", { className: "bg-slate-800 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center mb-4" }, /* @__PURE__ */ React.createElement(AlertTriangle, { className: "h-5 w-5 text-yellow-400 mr-3" }), /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white" }, "Informa\\xE7\\xF5es Importantes")), /* @__PURE__ */ React.createElement("div", { className: "space-y-4 text-gray-300 text-sm" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Exporta\\xE7\\xE3o:"), /* @__PURE__ */ React.createElement("ul", { className: "space-y-1 text-xs" }, /* @__PURE__ */ React.createElement("li", null, "\\u2022 Os arquivos s\\xE3o gerados em formato CSV padr\\xE3o"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 O backup completo inclui todas as tabelas"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Dados s\\xE3o exportados com codifica\\xE7\\xE3o UTF-8"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Campos vazios s\\xE3o representados como valores nulos"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Importa\\xE7\\xE3o:"), /* @__PURE__ */ React.createElement("ul", { className: "space-y-1 text-xs" }, /* @__PURE__ */ React.createElement("li", null, "\\u2022 Aceita apenas arquivos CSV"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Dados duplicados s\\xE3o atualizados (baseado no c\\xF3digo)"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Valida\\xE7\\xE3o autom\\xE1tica de tipos de dados"), /* @__PURE__ */ React.createElement("li", null, "\\u2022 Process em lotes para melhor performance")))), /* @__PURE__ */ React.createElement("div", { className: "border-t border-slate-600 pt-4" }, /* @__PURE__ */ React.createElement("h4", { className: "font-semibold text-white mb-2" }, "Formato dos Arquivos CSV:"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("strong", null, "Clientes:"), " codigo, nome, telefone, observacao, data_cadastro", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("strong", null, "Produtos:"), " codigo, nome, valor, custo, estoque"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("strong", null, "Servi\\xE7os:"), " codigo, nome, preco_hora, preco_custo", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("strong", null, "Vendas:"), " codigo, data, cliente_codigo, produto_codigo, servico_codigo, quantidade, valor_total, custo_fixo, lucro, observacao", /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("strong", null, "Devedores:"), " codigo, nome, data, valor, observacao"))))), /* @__PURE__ */ React.createElement("div", { className: "bg-gradient-to-r from-slate-800 to-slate-700 p-6 rounded-lg" }, /* @__PURE__ */ React.createElement("h3", { className: "text-lg font-semibold text-white mb-4 flex items-center" }, /* @__PURE__ */ React.createElement(Database, { className: "mr-3", size: 20 }), "Estat\\xEDsticas do Sistema"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 lg:grid-cols-5 gap-4" }, /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-blue-400" }, clientes.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Clientes")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-purple-400" }, produtos.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Produtos")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-orange-400" }, servicos.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Servi\\xE7os")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-emerald-400" }, vendas.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Vendas")), /* @__PURE__ */ React.createElement("div", { className: "text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-2xl font-bold text-red-400" }, devedores.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Devedores"))), /* @__PURE__ */ React.createElement("div", { className: "mt-4 pt-4 border-t border-slate-600 text-center" }, /* @__PURE__ */ React.createElement("div", { className: "text-lg font-bold text-green-400" }, clientes.length + produtos.length + servicos.length + vendas.length + devedores.length), /* @__PURE__ */ React.createElement("div", { className: "text-sm text-gray-300" }, "Total de Registros"))));
       default:
         return /* @__PURE__ */ React.createElement("div", { className: "text-white" }, "P\\xE1gina n\\xE3o encontrada");
     }
@@ -1855,6 +2045,79 @@ var SistemaGerenciamento = () => {
       },
       "Cancelar"
     )), !vendaEditando.cliente && /* @__PURE__ */ React.createElement("div", { className: "bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center text-yellow-400" }, /* @__PURE__ */ React.createElement(AlertTriangle, { size: 16, className: "mr-2" }), /* @__PURE__ */ React.createElement("span", { className: "text-sm" }, "Selecione um cliente para continuar."))))
+  ), /* @__PURE__ */ React.createElement(
+    Modal,
+    {
+      isOpen: showDevedorModal,
+      onClose: () => setShowDevedorModal(false),
+      title: editingItem ? "Editar Devedor" : "Novo Devedor"
+    },
+    /* @__PURE__ */ React.createElement("form", { onSubmit: handleSaveDevedor, className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "C\\xF3digo"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: devedorForm.codigo,
+        onChange: (e) => setDevedorForm({ ...devedorForm, codigo: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "Ex: DEV-001",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Nome do Devedor"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "text",
+        value: devedorForm.nome,
+        onChange: (e) => setDevedorForm({ ...devedorForm, nome: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "Nome completo do devedor",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Data de Vencimento"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "date",
+        value: devedorForm.data,
+        onChange: (e) => setDevedorForm({ ...devedorForm, data: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        required: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Valor da D\\xEDvida"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        min: "0",
+        value: devedorForm.valor,
+        onChange: (e) => setDevedorForm({ ...devedorForm, valor: e.target.value }),
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "0,00",
+        required: true
+      }
+    ))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { className: "block text-sm font-medium text-gray-300 mb-1" }, "Observa\\xE7\\xE3o"), /* @__PURE__ */ React.createElement(
+      "textarea",
+      {
+        value: devedorForm.observacao,
+        onChange: (e) => setDevedorForm({ ...devedorForm, observacao: e.target.value }),
+        rows: "3",
+        className: "w-full bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none",
+        placeholder: "Detalhes sobre a d\\xEDvida, motivo, acordo de pagamento..."
+      }
+    )), parseFloat(devedorForm.valor || 0) >= 1e3 && /* @__PURE__ */ React.createElement("div", { className: "bg-red-500/20 border border-red-500/50 rounded-lg p-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center text-red-400" }, /* @__PURE__ */ React.createElement(AlertTriangle, { size: 16, className: "mr-2" }), /* @__PURE__ */ React.createElement("span", { className: "text-sm font-medium" }, "\\u26A0\\uFE0F Valor elevado: ", formatCurrency(parseFloat(devedorForm.valor || 0))))), devedorForm.data && /* @__PURE__ */ new Date(devedorForm.data + "T12:00:00") < /* @__PURE__ */ new Date() && /* @__PURE__ */ React.createElement("div", { className: "bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center text-yellow-400" }, /* @__PURE__ */ React.createElement(AlertTriangle, { size: 16, className: "mr-2" }), /* @__PURE__ */ React.createElement("span", { className: "text-sm font-medium" }, "\\u{1F4C5} Data de vencimento j\\xE1 passou"))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-4" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "submit",
+        className: "flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-medium"
+      },
+      editingItem ? "Atualizar" : "Cadastrar"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        type: "button",
+        onClick: () => setShowDevedorModal(false),
+        className: "flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg"
+      },
+      "Cancelar"
+    )))
   ));
 };
 var stdin_default = SistemaGerenciamento;
@@ -1912,3 +2175,4 @@ export {
     </script>
   </body>
 </html>
+
